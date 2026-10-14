@@ -1,0 +1,22 @@
+# Compiled program (SplashKit / clang++ output)
+minecraft
+minecraft.exe
+*.exe
+*.out
+*.o
+*.obj
+
+# Debug symbols
+*.dSYM/
+*.pdb
+
+# Editor / OS clutter
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Personal Claude Code notes (not shared)
+CLAUDE.local.md
+
+# Claude Code project instructions (kept local only)
+CLAUDE.md
