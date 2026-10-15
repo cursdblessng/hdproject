@@ -39,6 +39,36 @@ Vector2 project_point(const Camera &cam, const Vector3 &p)
     return {screen_x, screen_y};
 }
 
+void draw_3d_line(const Camera &cam, const Vector3 &start, const Vector3 &end, color line_color)
+{
+    Vector2 screen_start = project_point(cam, start);
+    Vector2 screen_end = project_point(cam, end);
+
+    if (screen_start.x != -1 && screen_end.x != -1)
+    {
+        draw_line(line_color, screen_start.x, screen_start.y, screen_end.x, screen_end.y);
+    }
+}
+
+void draw_grid(const Camera &cam, int grid_radius)
+{
+    color grid_color = rgba_color(100, 100, 100, 100);
+
+    for (int i = -grid_radius; i <= grid_radius; i++)
+    {
+        // FIXED: Explicitly cast all ints to doubles in the initializer lists
+        draw_3d_line(cam,
+                     {(double)-grid_radius, 0.0, (double)i},
+                     {(double)grid_radius, 0.0, (double)i},
+                     grid_color);
+
+        draw_3d_line(cam,
+                     {(double)i, 0.0, (double)-grid_radius},
+                     {(double)i, 0.0, (double)grid_radius},
+                     grid_color);
+    }
+}
+
 // moves the camera along the world axes
 void handle_movement(Camera &cam)
 {
@@ -65,11 +95,9 @@ int main()
     open_window("poopcraft", 800, 600);
 
     Camera cam;
-    cam.position = {0, 0, -5};
+    // Moved camera up slightly so we can see the grid below us
+    cam.position = {0, 2, -5};
     cam.fov = 1.0;
-
-    // single point in the world to test the projection with
-    Vector3 test_point = {0, 0, 0};
 
     while (!quit_requested())
     {
@@ -79,11 +107,7 @@ int main()
 
         clear_screen(COLOR_SKY_BLUE);
 
-        Vector2 dot = project_point(cam, test_point);
-        if (dot.x != -1)
-        {
-            fill_circle(COLOR_RED, dot.x, dot.y, 5);
-        }
+        draw_grid(cam, 20);
 
         refresh_screen(60);
     }
