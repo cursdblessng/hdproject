@@ -17,6 +17,8 @@ struct Vector2
 struct Camera
 {
     Vector3 position;
+    double yaw;   // rotation for left right
+    double pitch; // rotation for up down
     double fov;
 };
 
@@ -26,15 +28,21 @@ Vector2 project_point(const Camera &cam, const Vector3 &p)
     double dy = p.y - cam.position.y;
     double dz = p.z - cam.position.z;
 
-    if (dz <= 0.1)
+    double rx = dx * cos(-cam.yaw) - dz * sin(-cam.yaw);
+    double rz = dx * sin(-cam.yaw) + dz * cos(-cam.yaw);
+
+    double ry = dy * cos(-cam.pitch) - rz * sin(-cam.pitch);
+    rz = dy * sin(-cam.pitch) + rz * cos(-cam.pitch);
+
+    if (rz <= 0.1)
     {
         return {-1, -1};
     }
 
     double fov_scale = (screen_width() / 2.0) / tan(cam.fov / 2.0);
 
-    double screen_x = (dx * fov_scale / dz) + (screen_width() / 2.0);
-    double screen_y = (-dy * fov_scale / dz) + (screen_height() / 2.0);
+    double screen_x = (rx * fov_scale / rz) + (screen_width() / 2.0);
+    double screen_y = (-dy * fov_scale / rz) + (screen_height() / 2.0);
 
     return {screen_x, screen_y};
 }
@@ -90,6 +98,29 @@ void handle_movement(Camera &cam)
         cam.position.y -= move_speed;
 }
 
+// mouse look
+void handle_mouse_look(Camera &cam, double mouse_sensitivity)
+{
+    const double PI = 3.14159265358979323846;
+
+    cam.yaw -= mouse_movement().x * mouse_sensitivity;
+    cam.pitch += mouse_movement().y * mouse_sensitivity;
+
+    // clamping pitch so the camera doesnt flip upside down
+    double pitch_limit = PI / 2.0;
+    if (cam.pitch > pitch_limit)
+    {
+        cam.pitch = pitch_limit;
+    }
+    if (cam.pitch < -pitch_limit)
+    {
+        cam.pitch = -pitch_limit;
+    }
+
+    // keep snapping the mouse to the middle so it never hits the window edge
+    move_mouse(screen_width() / 2.0, screen_height() / 2.0);
+}
+
 int main()
 {
     open_window("poopcraft", 800, 600);
@@ -97,17 +128,30 @@ int main()
     Camera cam;
     // Moved camera up slightly so we can see the grid below us
     cam.position = {0, 2, -5};
+    cam.yaw = 0.0;
+    cam.pitch = 0.0;
     cam.fov = 1.0;
+
+    hide_mouse();
+    move_mouse(screen_width() / 2.0, screen_height() / 2.0);
+
+    double mouse_sensitivity = 0.003;
 
     while (!quit_requested())
     {
         process_events();
 
+        //inputs
         handle_movement(cam);
+        handle_mouse_look(cam, mouse_sensitivity);
 
+        //drawing
         clear_screen(COLOR_SKY_BLUE);
 
         draw_grid(cam, 20);
+
+        //crosshair
+        fill_circle(COLOR_WHITE, screen_width() / 2.0, screen_height() / 2.0, 2);
 
         refresh_screen(60);
     }
