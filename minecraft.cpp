@@ -98,7 +98,7 @@ void handle_movement(Camera &cam)
         cam.position.y -= move_speed;
 }
 
-// mouse look
+// mouse look, only called when the cursor is locked
 void handle_mouse_look(Camera &cam, double mouse_sensitivity)
 {
     const double PI = 3.14159265358979323846;
@@ -121,6 +121,25 @@ void handle_mouse_look(Camera &cam, double mouse_sensitivity)
     move_mouse(screen_width() / 2.0, screen_height() / 2.0);
 }
 
+// escape key toggles whether or not cursor is locked
+void handle_cursor_toggle(bool &is_cursor_locked)
+{
+    if (key_typed(ESCAPE_KEY))
+    {
+        is_cursor_locked = !is_cursor_locked;
+
+        if (is_cursor_locked)
+        {
+            hide_mouse();
+            move_mouse(screen_width() / 2.0, screen_height() / 2.0);
+            mouse_movement(); // removes the jump caused by re entering game
+        }
+        else
+        {
+            show_mouse();
+        }
+    }
+}
 int main()
 {
     open_window("poopcraft", 800, 600);
@@ -132,6 +151,8 @@ int main()
     cam.pitch = 0.0;
     cam.fov = 1.0;
 
+    bool is_cursor_locked = true;
+
     hide_mouse();
     move_mouse(screen_width() / 2.0, screen_height() / 2.0);
 
@@ -142,8 +163,13 @@ int main()
         process_events();
 
         //inputs
+        handle_cursor_toggle(is_cursor_locked);
         handle_movement(cam);
-        handle_mouse_look(cam, mouse_sensitivity);
+
+        if (is_cursor_locked)
+        {
+            handle_mouse_look(cam, mouse_sensitivity);
+        }
 
         //drawing
         clear_screen(COLOR_SKY_BLUE);
