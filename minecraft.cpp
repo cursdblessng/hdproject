@@ -42,7 +42,8 @@ Vector2 project_point(const Camera &cam, const Vector3 &p)
     double fov_scale = (screen_width() / 2.0) / tan(cam.fov / 2.0);
 
     double screen_x = (rx * fov_scale / rz) + (screen_width() / 2.0);
-    double screen_y = (-dy * fov_scale / rz) + (screen_height() / 2.0);
+    // fixed ry idk wtf the error was previously
+    double screen_y = (-ry * fov_scale / rz) + (screen_height() / 2.0);
 
     return {screen_x, screen_y};
 }
@@ -77,19 +78,41 @@ void draw_grid(const Camera &cam, int grid_radius)
     }
 }
 
-// moves the camera along the world axes
+// wasd movement relative to where camera is facing
 void handle_movement(Camera &cam)
 {
     double move_speed = 0.1;
 
+    // direction the camera faces on the flat ground
+    // ignores pitch so looking down doesn't slow you down
+
+    double forward_x = -sin(cam.yaw);
+    double forward_z = cos(cam.yaw);
+
+    // direction the camera's right
+    double right_x = cos(cam.yaw);
+    double right_z = sin(cam.yaw);
+
     if (key_down(W_KEY))
-        cam.position.z += move_speed;
+    {
+        cam.position.x += forward_x * move_speed;
+        cam.position.z += forward_z * move_speed;
+    }
     if (key_down(S_KEY))
-        cam.position.z -= move_speed;
+    {
+        cam.position.x -= forward_x * move_speed;
+        cam.position.z -= forward_z * move_speed;
+    }
     if (key_down(D_KEY))
-        cam.position.x += move_speed;
+    {
+        cam.position.x += right_x * move_speed;
+        cam.position.z += right_z * move_speed;
+    }
     if (key_down(A_KEY))
-        cam.position.x -= move_speed;
+    {
+        cam.position.x -= right_x * move_speed;
+        cam.position.z -= right_z * move_speed;
+    }
 
     // up or down movement
     if (key_down(SPACE_KEY))
@@ -103,8 +126,15 @@ void handle_mouse_look(Camera &cam, double mouse_sensitivity)
 {
     const double PI = 3.14159265358979323846;
 
-    cam.yaw -= mouse_movement().x * mouse_sensitivity;
-    cam.pitch += mouse_movement().y * mouse_sensitivity;
+    // call mouse_movement once per frame and store the result
+    // it returns the movement since it was last called
+    // calling it a second time in the same frame returns (0,0)
+    // which was previously the issue
+
+    vector_2d movement = mouse_movement();
+
+    cam.yaw -= movement.x * mouse_sensitivity;
+    cam.pitch += movement.y * mouse_sensitivity;
 
     // clamping pitch so the camera doesnt flip upside down
     double pitch_limit = PI / 2.0;
