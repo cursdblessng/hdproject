@@ -62,6 +62,59 @@ struct CubeCorners
     Vector3 points[8];
 };
 
+const int NUM_FACES = 6;
+
+/**
+ * which 4 corners make up each face
+ * corners go round the edge of the face in order, so splitting it into
+ * triangles (0,1,2) and (0,2,3) covers the whole face with no gaps
+ */
+const int FACE_CORNERS[NUM_FACES][4] = {
+    {0, 1, 2, 3}, // 0 bottom (y)
+    {4, 5, 6, 7}, // 1 top    (y + 1)
+    {0, 1, 5, 4}, // 2 front  (z)
+    {3, 2, 6, 7}, // 3 back   (z + 1)
+    {0, 3, 7, 4}, // 4 left   (x)
+    {1, 2, 6, 5}, // 5 right  (x + 1)
+};
+
+// the direction each face points outwards, same order as FACE_CORNERS
+// used for back-face culling
+const Vector3 FACE_NORMALS[NUM_FACES] = {
+    {0, -1, 0}, // bottom
+    {0, 1, 0},  // top
+    {0, 0, -1}, // front
+    {0, 0, 1},  // back
+    {-1, 0, 0}, // left
+    {1, 0, 0},  // right
+};
+
+// brightness of each face so you can tell the sides of a cube apart
+// top is brightest like sunlight from above, bottom is darkest
+const double FACE_SHADE[NUM_FACES] = {0.5, 1.0, 0.8, 0.8, 0.65, 0.65};
+
+/**
+ * one visible face waiting to be drawn
+ * stores which block and which face instead of the projected points
+ * to keep it small (16 bytes) so the list fits on the stack
+ */
+struct FaceRef
+{
+    int block_index; // index into world.data
+    int face;        // 0 to 5, index into FACE_CORNERS
+    double depth;    // squared distance from camera, for sorting
+};
+
+// a cube shows at most 3 faces, but 10000 is plenty for now and keeps
+// the list at 160KB. Windows only gives the stack about 1MB
+const int MAX_VISIBLE_FACES = 10000;
+
+struct FaceList
+{
+    FaceRef data[MAX_VISIBLE_FACES];
+    int size;
+};
+
 void init_block_array(BlockArray &arr)
 {
     arr.size = 0;
@@ -166,6 +219,7 @@ CubeCorners get_block_corners(const Block &b)
     double y = b.position.y;
     double z = b.position.z;
 
+    // clang-format off
     // bottom face of cube
     c.points[0] = {x,       y, z};
     c.points[1] = {x + 1.0, y, z};
@@ -177,6 +231,7 @@ CubeCorners get_block_corners(const Block &b)
     c.points[5] = {x + 1.0, y + 1.0, z};
     c.points[6] = {x + 1.0, y + 1.0, z + 1.0};
     c.points[7] = {x,       y + 1.0, z + 1.0};
+    // clang-format on
 
     return c;
 }
@@ -192,9 +247,9 @@ void draw_wireframe_block(const Camera &cam, const Block &b)
     {
         int next = (i + 1) % 4; // wraps 3 back round to 0 to close the square
 
-        draw_3d_line(cam, c.points[i],     c.points[next],     edge_colour); // bottom edge
+        draw_3d_line(cam, c.points[i], c.points[next], edge_colour);         // bottom edge
         draw_3d_line(cam, c.points[i + 4], c.points[next + 4], edge_colour); // top edge
-        draw_3d_line(cam, c.points[i],     c.points[i + 4],    edge_colour); // vertical edge
+        draw_3d_line(cam, c.points[i], c.points[i + 4], edge_colour);        // vertical edge
     }
 }
 
@@ -206,6 +261,172 @@ void draw_world_wireframe(const Camera &cam, const BlockArray &world)
         {
             draw_wireframe_block(cam, world.data[i]);
         }
+    }
+}
+
+// middle point of one face, used for culling and depth sorting
+Vector3 face_centre(const CubeCorners &c, int face)
+{
+    Vector3 centre = {0.0, 0.0, 0.0};
+
+    for (int i = 0; i < 4; i++)
+    {
+        Vector3 p = c.points[FACE_CORNERS[face][i]];
+        centre.x += p.x;
+        centre.y += p.y;
+        centre.z += p.z;
+    }
+
+    // average of the 4 corners
+    centre.x /= 4.0;
+    centre.y /= 4.0;
+    centre.z /= 4.0;
+
+    return centre;
+}
+
+/**
+ * BACK FACE CULLING:
+ * a face is only visible if the camera is on the same side its pointing towards
+ * the dot product of the normal and the face-to-camera direction
+ * is positive only when they point the same way, meaning face is facing camera
+ */
+bool is_face_visible(const Camera &cam, const CubeCorners &c, int face)
+{
+    Vector3 centre = face_centre(c, face);
+    Vector3 normal = FACE_NORMALS[face];
+
+    double to_cam_x = cam.position.x - centre.x;
+    double to_cam_y = cam.position.y - centre.y;
+    double to_cam_z = cam.position.z - centre.z;
+
+    double dot = to_cam_x * normal.x + to_cam_y * normal.y + to_cam_z * normal.z;
+
+    return dot > 0;
+}
+
+/**
+ * squared distance and if a > b then a squared > b squared, so the order is the same
+ */
+double distance_squared(const Vector3 &a, const Vector3 &b)
+{
+    double dx = a.x - b.x;
+    double dy = a.y - b.y;
+    double dz = a.z - b.z;
+    return dx * dx + dy * dy + dz * dz;
+}
+// darkens a colour by factor between 0 and 1
+color shade_colour(color base, double factor)
+{
+    return rgb_color((int)(red_of(base) * factor),
+                     (int)(green_of(base) * factor),
+                     (int)(blue_of(base) * factor));
+}
+
+/**
+ * fills the list with every face that the camera is facing
+ */
+void collect_visible_faces(const Camera &cam, const BlockArray &world, FaceList &faces)
+{
+    faces.size = 0;
+
+    for (int i = 0; i < world.size; i++)
+    {
+        if (!world.data[i].is_active)
+        {
+            continue;
+        }
+
+        CubeCorners c = get_block_corners(world.data[i]);
+
+        for (int f = 0; f < NUM_FACES; f++)
+        {
+            if (is_face_visible(cam, c, f))
+            {
+                // list full, so stop adding.
+                if (faces.size >= MAX_VISIBLE_FACES)
+                {
+                    return;
+                }
+
+                faces.data[faces.size] = {i, f, distance_squared(cam.position, face_centre(c, f))};
+                faces.size++;
+            }
+        }
+    }
+}
+
+/**
+ * painter's algorithm needs furthest faces first
+ * insertion sort is used to take each face and slide it past
+ * every face that is closer to the camera.
+ * good enough for now
+ *
+ * to-do: CHANGE SORTING ALGORITHM LATER FOR BIGGER WORLDS
+ */
+void sort_faces_far_to_close(FaceList &faces)
+{
+    for (int i = 0; i < faces.size; i++)
+    {
+        FaceRef current = faces.data[i];
+        int j = i - 1;
+
+        while (j >= 0 && faces.data[j].depth < current.depth)
+        {
+            faces.data[j + 1] = faces.data[j];
+            j--;
+        }
+
+        faces.data[j + 1] = current;
+    }
+}
+
+// render block as two triangles on one side of block
+void draw_face(const Camera &cam, const Block &b, int face)
+{
+    CubeCorners c = get_block_corners(b);
+    Vector2 screen[4];
+
+    for (int i = 0; i < 4; i++)
+    {
+        screen[i] = project_point(cam, c.points[FACE_CORNERS[face][i]]);
+
+        // a corner is behind the camera, skip the entire face
+        // near plane clipping, will fix this later
+        if (screen[i].x == -1)
+        {
+            return;
+        }
+    }
+
+    color fill = shade_colour(block_colour(b.type), FACE_SHADE[face]);
+
+    // a quad is two triangles sharing a diagonal
+    fill_triangle(fill, screen[0].x, screen[0].y, screen[1].x, screen[1].y, screen[2].x, screen[2].y);
+    fill_triangle(fill, screen[0].x, screen[0].y, screen[2].x, screen[2].y, screen[3].x, screen[3].y);
+
+    // darker outline so blocks next to each other don't merge into one blob
+    color outline = shade_colour(fill,0.6);
+    for (int i = 0; i < 4; i++)
+    {
+        int next = (i + 1) % 4;
+        draw_line(outline, screen[i].x, screen[i].y, screen[next].x, screen[next].y);
+    }
+}
+
+// collect then sort then draw far to near
+void draw_world_solid(const Camera &cam, const BlockArray &world)
+{
+    // made fresh every frame because the camera moves, so which faces are are visible and their order changes each frame
+    FaceList faces;
+
+    collect_visible_faces(cam, world, faces);
+    sort_faces_far_to_close(faces);
+
+    for (int i = 0; i < faces.size; i++)
+    {
+        FaceRef f = faces.data[i];
+        draw_face(cam, world.data[f.block_index], f.face);
     }
 }
 
@@ -322,6 +543,7 @@ void handle_cursor_toggle(bool &is_cursor_locked)
         }
     }
 }
+
 int main()
 {
     open_window("poopcraft", 800, 600);
@@ -348,7 +570,7 @@ int main()
     {
         process_events();
 
-        //inputs
+        // inputs
         handle_cursor_toggle(is_cursor_locked);
         handle_movement(cam);
 
@@ -357,13 +579,13 @@ int main()
             handle_mouse_look(cam, mouse_sensitivity);
         }
 
-        //drawing
+        // drawing
         clear_screen(COLOR_SKY_BLUE);
 
         draw_grid(cam, 20);
-        draw_world_wireframe(cam, world);
+        draw_world_solid(cam, world);
 
-        //crosshair
+        // crosshair
         fill_circle(COLOR_WHITE, screen_width() / 2.0, screen_height() / 2.0, 2);
 
         refresh_screen(60);
