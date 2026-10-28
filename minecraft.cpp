@@ -39,6 +39,11 @@ struct Camera
     double fov;
 };
 
+// how far in front of the camera the "near wall" is
+// anything closer than this gets cut off, because dividing by a z
+// thats tiny or negative blows up or flips the point
+const double NEAR_PLANE = 0.1;
+
 const int MAX_BLOCKS = 10000;
 
 struct BlockArray
@@ -133,41 +138,106 @@ void add_block(BlockArray &arr, Block b)
     }
 }
 
-Vector2 project_point(const Camera &cam, const Vector3 &p)
+/**
+ * step 1 of projection: moves and rotates a world point so the
+ * camera is at (0,0,0) looking straight down +z
+ * the result is in "camera space":
+ * x = how far right of the camera
+ * y = how far above the camera
+ * z = how far in front of the camera (negative = behind)
+ */
+Vector3 world_to_camera(const Camera &cam, const Vector3 &p)
 {
+    // position relative to the camera
     double dx = p.x - cam.position.x;
     double dy = p.y - cam.position.y;
     double dz = p.z - cam.position.z;
 
+    // undo the camera's yaw (turn left/right)
     double rx = dx * cos(-cam.yaw) - dz * sin(-cam.yaw);
     double rz = dx * sin(-cam.yaw) + dz * cos(-cam.yaw);
 
+    // undo the camera's pitch (look up/down)
     double ry = dy * cos(-cam.pitch) - rz * sin(-cam.pitch);
     rz = dy * sin(-cam.pitch) + rz * cos(-cam.pitch);
 
-    if (rz <= 0.1)
-    {
-        return {-1, -1};
-    }
-
+    return {rx, ry, rz};
+}
+/**
+ * step 2 of projection: perspective divide, camera space -> screen pixel
+ * further away means bigger z, so closer to middle of screen
+ * only calls this when c.z >= NEAR_PLANE, otherwise divide the breaks
+ */
+Vector2 camera_to_screen(const Camera &cam, const Vector3 &c)
+{
     double fov_scale = (screen_width() / 2.0) / tan(cam.fov / 2.0);
 
-    double screen_x = (rx * fov_scale / rz) + (screen_width() / 2.0);
-    // fixed ry idk wtf the error was previously
-    double screen_y = (-ry * fov_scale / rz) + (screen_height() / 2.0);
+    double screen_x = (c.x * fov_scale / c.z) + (screen_width() / 2.0);
+    // minus because screen y down means camera y up
+    double screen_y = (-c.y * fov_scale / c.z) + (screen_height() / 2.0);
 
     return {screen_x, screen_y};
 }
 
+Vector2 project_point(const Camera &cam, const Vector3 &p)
+{
+    Vector3 c = world_to_camera(cam, p);
+
+    if (c.z <= NEAR_PLANE)
+    {
+        return {-1, -1};
+    }
+
+    return camera_to_screen(cam, c);
+}
+
+/**
+ * finds where the line from a to b crosses the near wall
+ * a and b must be in camera space, with one in front of the wall
+ * and one behind the wall (so a.z and b.z are never equal, never give 0 when divided)
+ */
+Vector3 near_plane_intersection(const Vector3 &a, const Vector3 &b)
+{
+    // how far along the line the wall is: 0 = at a, 1 = at b, 0.5 = halfway
+    double t = (NEAR_PLANE - a.z) / (b.z - a.z);
+
+    // move that fraction of the way from a towards b on x and y
+    // z is exactly on the wall by definition
+    return {a.x + t * (b.x - a.x),
+            a.y + t * (b.y - a.y),
+            NEAR_PLANE};
+}
+
 void draw_3d_line(const Camera &cam, const Vector3 &start, const Vector3 &end, color line_color)
 {
-    Vector2 screen_start = project_point(cam, start);
-    Vector2 screen_end = project_point(cam, end);
+    Vector3 a = world_to_camera(cam, start);
+    Vector3 b = world_to_camera(cam, end);
 
-    if (screen_start.x != -1 && screen_end.x != -1)
+    // >= not > because a clipped end sits exactly ON the wall and must count
+    bool a_in_front = a.z >= NEAR_PLANE;
+    bool b_in_front = b.z >= NEAR_PLANE;
+
+    if (!a_in_front && !b_in_front)
     {
-        draw_line(line_color, screen_start.x, screen_start.y, screen_end.x, screen_end.y);
+        return;
     }
+
+    // one end behind: slide it forwards along the line onto the wall
+    // (only one of these can run, both-behind already returned above)
+    if (!a_in_front)
+    {
+        a = near_plane_intersection(a, b);
+    }
+    if (!b_in_front)
+    {
+        b = near_plane_intersection(a, b);
+    }
+
+    // both ends are now safely in front, so step 3 (divide) is safe
+    Vector2 screen_start = camera_to_screen(cam, a);
+    Vector2 screen_end = camera_to_screen(cam, b);
+
+    draw_line(line_color, screen_start.x, screen_start.y, screen_end.x, screen_end.y);
 }
 
 void draw_grid(const Camera &cam, int grid_radius)
@@ -406,7 +476,7 @@ void draw_face(const Camera &cam, const Block &b, int face)
     fill_triangle(fill, screen[0].x, screen[0].y, screen[2].x, screen[2].y, screen[3].x, screen[3].y);
 
     // darker outline so blocks next to each other don't merge into one blob
-    color outline = shade_colour(fill,0.6);
+    color outline = shade_colour(fill, 0.6);
     for (int i = 0; i < 4; i++)
     {
         int next = (i + 1) % 4;
