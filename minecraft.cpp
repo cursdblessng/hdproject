@@ -120,6 +120,17 @@ struct FaceList
     int size;
 };
 
+// a flat shape with a variable number of corners, used for clipping
+// a 4 corner face cut by near wall has at most 5 corners
+// 8 leaves room to spare
+const int MAX_POLYGON_POINTS = 8;
+
+struct Polygon
+{
+    Vector3 points[MAX_POLYGON_POINTS];
+    int size;
+};
+
 void init_block_array(BlockArray &arr)
 {
     arr.size = 0;
@@ -179,17 +190,17 @@ Vector2 camera_to_screen(const Camera &cam, const Vector3 &c)
     return {screen_x, screen_y};
 }
 
-Vector2 project_point(const Camera &cam, const Vector3 &p)
-{
-    Vector3 c = world_to_camera(cam, p);
+// Vector2 project_point(const Camera &cam, const Vector3 &p)
+// {
+//     Vector3 c = world_to_camera(cam, p);
 
-    if (c.z <= NEAR_PLANE)
-    {
-        return {-1, -1};
-    }
+//     if (c.z <= NEAR_PLANE)
+//     {
+//         return {-1, -1};
+//     }
 
-    return camera_to_screen(cam, c);
-}
+//     return camera_to_screen(cam, c);
+// }
 
 /**
  * finds where the line from a to b crosses the near wall
@@ -206,6 +217,47 @@ Vector3 near_plane_intersection(const Vector3 &a, const Vector3 &b)
     return {a.x + t * (b.x - a.x),
             a.y + t * (b.y - a.y),
             NEAR_PLANE};
+}
+
+/**
+ * cuts a polygon (in camera space) along the near wall
+ * and keeps the part in front of it
+ * goes around every edge and:
+ *      keep the start corner if its in front of the wall
+ *      add the crossing point if the edge goes through the wall
+ */
+Polygon clip_polygon_to_near_plane(const Polygon &input)
+{
+    Polygon output;
+    output.size = 0;
+
+    for (int i = 0; i < input.size; i++)
+    {
+        // this edge runs from current to next, the last corner wraps
+        // back round to the first to close the loop
+        Vector3 current = input.points[i];
+        Vector3 next = input.points[(i + 1) % input.size];
+
+        bool current_in_front = current.z >= NEAR_PLANE;
+        bool next_in_front = next.z >= NEAR_PLANE;
+
+        // rule 1: corners in front of the wall stay
+        if (current_in_front)
+        {
+            output.points[output.size] = current;
+            output.size++;
+        }
+
+        // rule 2: one end in front and one behind,
+        // so the edge crosses the wall, crossing point becomes new corner
+        if (current_in_front != next_in_front)
+        {
+            output.points[output.size] = near_plane_intersection(current, next);
+            output.size++;
+        }
+    }
+
+    return output;
 }
 
 void draw_3d_line(const Camera &cam, const Vector3 &start, const Vector3 &end, color line_color)
@@ -451,36 +503,53 @@ void sort_faces_far_to_close(FaceList &faces)
     }
 }
 
-// render block as two triangles on one side of block
+// projects one face to the screen, cutting off any part behind the near wall
 void draw_face(const Camera &cam, const Block &b, int face)
 {
     CubeCorners c = get_block_corners(b);
-    Vector2 screen[4];
 
+    // projection steps 1 and 2 for the face's 4 corners
+    // stays in camera space so clipping can see each corner's depth
+    Polygon face_shape;
+    face_shape.size = 4;
     for (int i = 0; i < 4; i++)
     {
-        screen[i] = project_point(cam, c.points[FACE_CORNERS[face][i]]);
+        face_shape.points[i] = world_to_camera(cam, c.points[FACE_CORNERS[face][i]]);
+    }
 
-        // a corner is behind the camera, skip the entire face
-        // near plane clipping, will fix this later
-        if (screen[i].x == -1)
-        {
-            return;
-        }
+    // cut off whatever is behind the near wall
+    Polygon clipped = clip_polygon_to_near_plane(face_shape);
+
+    // whole face was behind the wall, nothing left to fill
+    if (clipped.size < 3)
+    {
+        return;
+    }
+
+    // step 3: every remaining corner is in front of the wall, so can divide
+    Vector2 screen[MAX_POLYGON_POINTS];
+    for (int i = 0; i < clipped.size; i++)
+    {
+        screen[i] = camera_to_screen(cam, clipped.points[i]);
     }
 
     color fill = shade_colour(block_colour(b.type), FACE_SHADE[face]);
 
-    // a quad is two triangles sharing a diagonal
-    fill_triangle(fill, screen[0].x, screen[0].y, screen[1].x, screen[1].y, screen[2].x, screen[2].y);
-    fill_triangle(fill, screen[0].x, screen[0].y, screen[2].x, screen[2].y, screen[3].x, screen[3].y);
+    // triangle fan: every triangle shares corner 0
+    // 4 corners gives (0,1,2) (0,2,3), 5 corners adds (0,3,4)
+    for (int i = 0; i < clipped.size - 1; i++)
+    {
+        fill_triangle(fill, screen[0].x, screen[0].y, screen[i].x, screen[i].y, screen[i + 1].x, screen[i + 1].y);
+    }
 
-    // darker outline so blocks next to each other don't merge into one blob
+    // outline 4 real edges with draw_3d_line which clips them itself
+    // outlining the clipped shape would also draw the cut along the near
+    // wall, which isnt a real edge of the block
     color outline = shade_colour(fill, 0.6);
     for (int i = 0; i < 4; i++)
     {
         int next = (i + 1) % 4;
-        draw_line(outline, screen[i].x, screen[i].y, screen[next].x, screen[next].y);
+        draw_3d_line(cam, c.points[FACE_CORNERS[face][i]], c.points[FACE_CORNERS[face][next]], outline);
     }
 }
 
