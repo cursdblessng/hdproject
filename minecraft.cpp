@@ -20,6 +20,12 @@ int main()
 
     bool is_cursor_locked = true;
 
+    // starts on foot, press f to fly
+    Player player;
+    player.velocity_y = 0.0;
+    player.on_ground = false; // spawns in the air
+    player.is_flying = false;
+
     hide_mouse();
     move_mouse(screen_width() / 2.0, screen_height() / 2.0);
 
@@ -31,7 +37,8 @@ int main()
 
         // inputs
         handle_cursor_toggle(is_cursor_locked);
-        handle_movement(cam, world);
+        handle_fly_toggle(player);
+        handle_movement(cam, player, world);
 
         if (is_cursor_locked)
         {

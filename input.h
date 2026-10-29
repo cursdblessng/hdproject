@@ -3,11 +3,26 @@
 
 #include "world.h"
 
+/**
+ * movement state for the player that isnt stored in the camera
+ * (the camera's position IS the players eyes, so position lives there)
+ * kept between frames because gravity builds up speed over time
+ */
+struct Player
+{
+    double velocity_y; // up/down speed in blocks per frame, negative = falling
+    bool on_ground;    // standing on something, so allowed to jump
+    bool is_flying;    // true = no gravity, space/shift move up and down
+};
+
 // wasd movement relative to where camera is facing, space/shift for up/down
-void handle_movement(Camera &cam, const BlockArray &world);
+void handle_movement(Camera &cam, Player &player, const BlockArray &world);
 
 // mouse look, only called when the cursor is locked
 void handle_mouse_look(Camera &cam, double mouse_sensitivity);
 
 // escape key toggles whether or not cursor is locked
 void handle_cursor_toggle(bool &is_cursor_locked);
+
+// f toggles flying on/off
+void handle_fly_toggle(Player &player);
