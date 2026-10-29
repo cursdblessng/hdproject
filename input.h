@@ -26,3 +26,6 @@ void handle_cursor_toggle(bool &is_cursor_locked);
 
 // f toggles flying on/off
 void handle_fly_toggle(Player &player);
+
+// left click breaks the block the crosshair is on
+void handle_block_break(const Camera &cam, BlockArray &world);

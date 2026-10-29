@@ -239,3 +239,26 @@ void handle_fly_toggle(Player &player)
         player.velocity_y = 0.0;
     }
 }
+
+/**
+ * left click breaks the block under the crosshair
+ * breaking = setting is_active to false.
+ * rendering, collision, and the raycast skip inactive blocks
+ * so it disappears, can be walked through, and the ray passes through the gap
+ * mouse_clicked (not mouse_down) so one click breaks the block
+ * instead of one block per every frame the button is held
+ */
+void handle_block_break(const Camera &cam, BlockArray &world)
+{
+    if (mouse_clicked(LEFT_BUTTON))
+    {
+        int hit = raycast_block(cam, world);
+
+        // -1 means nothing within reach, and isnt a real index
+        // so world.data[-1] would read outside the array
+        if (hit != -1)
+        {
+            world.data[hit].is_active = false;
+        }
+    }
+}

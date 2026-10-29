@@ -93,3 +93,6 @@ void build_test_world(BlockArray &world);
 
 // does this block overlap any active block? used for player collision
 bool box_hits_world(const Box &box, const BlockArray &world);
+
+// index of the block the crosshair is pointing at, or -1 if none within reach
+int raycast_block(const Camera &cam, const BlockArray &world);

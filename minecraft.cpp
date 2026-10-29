@@ -43,6 +43,9 @@ int main()
         if (is_cursor_locked)
         {
             handle_mouse_look(cam, mouse_sensitivity);
+
+            // after mouse look, so the ray uses where you're looking THIS frame
+            handle_block_break(cam, world);
         }
 
         // drawing

@@ -1,4 +1,11 @@
 #include "world.h"
+#include <cmath>
+
+// how far away you can reach to break a block
+const double REACH = 5.0;
+
+// how far the ray moves each check. smaller means more accurate but slower
+const double RAY_STEP = 0.05;
 
 void init_block_array(BlockArray &arr)
 {
@@ -125,4 +132,71 @@ bool box_hits_world(const Box &box, const BlockArray &world)
     }
 
     return false;
+}
+
+/**
+ * the direction the camera is looking, as a 3D direction of length 1.
+ * starts from the flat forward direction (same as handle_movement),
+ * then tilts it by pitch:
+ * - looking down (positive pitch) makes y negative, by sin(pitch)
+ * - the more you tilt, the less of the ray points forward, so x and z
+ *   shrink by cos(pitch) (straight down = no forward part at all)
+ */
+Vector3 look_direction(const Camera &cam)
+{
+    Vector3 dir;
+    dir.x = -sin(cam.yaw) * cos(cam.pitch);
+    dir.y = -sin(cam.pitch);
+    dir.z = cos(cam.yaw) * cos(cam.pitch);
+    return dir;
+}
+
+/**
+ * is this point inside a block?
+ * the block fills position to position + 1 on every axis.
+ * >= at the start and < at the end, so that
+ * a point exactly between two blocks counts as inside one only, not both
+ */
+bool point_in_block(const Vector3 &p, const Block &b)
+{
+    return p.x >= b.position.x && p.x < b.position.x + 1.0 &&
+           p.y >= b.position.y && p.y < b.position.y + 1.0 &&
+           p.z >= b.position.z && p.z < b.position.z + 1.0;
+}
+
+/**
+ * which block is the crosshair pointing at?
+ * walks from the camera along the look direction in small steps
+ * returns the index of the first active block a step lands inside.
+ * stepping outwards from the camera means the first hit is always the nearest block,
+ * so you cant hit a block hidden behind another one.
+ * returns -1 if nothing is within reach (-1 can never be a real index)
+ */
+int raycast_block(const Camera &cam, const BlockArray &world)
+{
+    Vector3 dir = look_direction(cam);
+
+    // count steps with an int rather than adding RAY_STEP to a double over and over,
+    // so tiny rounding errors dont build up along the way
+    int num_steps = (int)(REACH / RAY_STEP);
+
+    for (int s = 0; s <= num_steps; s++)
+    {
+        // dir has length 1, so this point is exactly 'distance' blocks away
+        double distance = s * RAY_STEP;
+        Vector3 point = {cam.position.x + dir.x * distance,
+                         cam.position.y + dir.y * distance,
+                         cam.position.z + dir.z * distance};
+
+        for (int i = 0; i < world.size; i++)
+        {
+            // broken blocks are inactive, the ray should pass straight through them
+            if (world.data[i].is_active && point_in_block(point, world.data[i]))
+            {
+                return i;
+            }
+        }
+    }
+
+    return -1; // reached REACH value without hitting any block
 }
