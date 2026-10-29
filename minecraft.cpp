@@ -31,7 +31,7 @@ int main()
 
         // inputs
         handle_cursor_toggle(is_cursor_locked);
-        handle_movement(cam);
+        handle_movement(cam, world);
 
         if (is_cursor_locked)
         {

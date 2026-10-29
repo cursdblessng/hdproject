@@ -64,6 +64,18 @@ struct CubeCorners
     Vector3 points[8];
 };
 
+/**
+ * an axis-aligned box: all the space between a min corner and a max corner
+ * "axis-aligned" means its edges always run along x, y and z (never rotated),
+ * which makes checking whether two boxes overlap very cheap
+ * used for collision: a block is a 1x1x1 box, the player is 0.6 x 2 x 0.6
+ */
+struct Box
+{
+    Vector3 min; // smallest x, y and z corner
+    Vector3 max; // largest x, y and z corner
+};
+
 // empties the block array so blocks can be added from index 0
 void init_block_array(BlockArray &arr);
 
@@ -78,3 +90,6 @@ CubeCorners get_block_corners(const Block &b);
 
 // fills the world with the hand placed test blocks
 void build_test_world(BlockArray &world);
+
+// does this block overlap any active block? used for player collision
+bool box_hits_world(const Box &box, const BlockArray &world);

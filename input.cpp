@@ -2,8 +2,62 @@
 #include "splashkit.h"
 #include <cmath> // sin, cos
 
+// player size, 0.6x2.0x0.6
+const double PLAYER_HEIGHT = 2.0; // 2 blocks tall
+const double PLAYER_WIDTH = 0.6;  // 0.6 blocks wide
+
+// camera sits 1.5 blocks above bottom of the player, middle of top block
+const double EYE_HEIGHT = 1.5;
+
+Box player_box(const Vector3 &eye)
+{
+    // the box spreads out evenly either side of the eyes on x and z
+    double half_width = PLAYER_WIDTH / 2.0;
+
+    // feet are EYE_HEIGHT below the eyes
+    double feet_y = eye.y - EYE_HEIGHT;
+
+    Box b;
+    b.min = {eye.x - half_width, feet_y, eye.z - half_width};
+    b.max = {eye.x + half_width, feet_y + PLAYER_HEIGHT, eye.z + half_width};
+    return b;
+}
+
+/**
+ * moves the camera by (dx, dy, dz)
+ * UNLESS that would put the player inside a block.
+ * each axis is tried on its own
+ * so walking into a wall at an angle only cancels the part going into the wall
+ * and you end up sliding alongside it instead of stopping completely
+ */
+void move_player(Camera &cam, const BlockArray &world, double dx, double dy, double dz)
+{
+    // try x: work out where we'd be, only go there if it's not inside a block
+    Vector3 next = cam.position;
+    next.x += dx;
+    if (!box_hits_world(player_box(next), world))
+    {
+        cam.position = next;
+    }
+
+    next = cam.position;
+    next.y += dy;
+    if (!box_hits_world(player_box(next), world))
+    {
+        cam.position = next;
+    }
+
+    next = cam.position;
+    next.z += dz;
+    if (!box_hits_world(player_box(next), world))
+    {
+        cam.position = next;
+    }
+}
+
 // wasd movement relative to where camera is facing
-void handle_movement(Camera &cam)
+// works out how much the player WANTS to move. move_player then checks for collision
+void handle_movement(Camera &cam, const BlockArray &world)
 {
     double move_speed = 0.1;
 
@@ -17,32 +71,43 @@ void handle_movement(Camera &cam)
     double right_x = cos(cam.yaw);
     double right_z = sin(cam.yaw);
 
+    // total movement wanted this frame, added up from every key held
+    double dx = 0.0;
+    double dy = 0.0;
+    double dz = 0.0;
+
     if (key_down(W_KEY))
     {
-        cam.position.x += forward_x * move_speed;
-        cam.position.z += forward_z * move_speed;
+        dx += forward_x * move_speed;
+        dz += forward_z * move_speed;
     }
     if (key_down(S_KEY))
     {
-        cam.position.x -= forward_x * move_speed;
-        cam.position.z -= forward_z * move_speed;
+        dx -= forward_x * move_speed;
+        dz -= forward_z * move_speed;
     }
     if (key_down(D_KEY))
     {
-        cam.position.x += right_x * move_speed;
-        cam.position.z += right_z * move_speed;
+        dx += right_x * move_speed;
+        dz += right_z * move_speed;
     }
     if (key_down(A_KEY))
     {
-        cam.position.x -= right_x * move_speed;
-        cam.position.z -= right_z * move_speed;
+        dx -= right_x * move_speed;
+        dz -= right_z * move_speed;
     }
 
     // up or down movement
     if (key_down(SPACE_KEY))
-        cam.position.y += move_speed;
+    {
+        dy += move_speed;
+    }
     if (key_down(LEFT_SHIFT_KEY))
-        cam.position.y -= move_speed;
+    {
+        dy -= move_speed;
+    }
+
+    move_player(cam, world, dx, dy, dz);
 }
 
 // mouse look, only called when the cursor is locked

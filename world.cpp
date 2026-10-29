@@ -85,3 +85,44 @@ void build_test_world(BlockArray &world)
     // stone block floating on the sise
     add_block(world, {{-4.0, 5.0, 3.0}, STONE, true});
 }
+
+/**
+ * do two boxes overlap?
+ * on one axis, two ranges overlap if each one starts before the other ends.
+ * boxes only overlap if that's true on x, y AND z at the same time.
+ * < and > (not <= >=) so boxes that are just touching don't count,
+ * otherwise standing exactly on a block would count as being inside it
+ */
+bool boxes_overlap(const Box &a, const Box &b)
+{
+    return a.min.x < b.max.x && a.max.x > b.min.x &&
+           a.min.y < b.max.y && a.max.y > b.min.y &&
+           a.min.z < b.max.z && a.max.z > b.min.z;
+}
+
+// the space that a block fills, from its position (min corner) to position + 1
+Box block_box(const Block &b)
+{
+    Box box;
+    box.min = b.position;
+    box.max = {b.position.x + 1.0, b.position.y + 1.0, b.position.z + 1.0};
+
+    return box;
+}
+
+/**
+ * does this box overlap any active block in the world?
+ * checks every block, stops as soon as one hits
+ */
+bool box_hits_world(const Box &box, const BlockArray &world)
+{
+    for (int i = 0; i < world.size; i++)
+    {
+        if (world.data[i].is_active && boxes_overlap(box, block_box(world.data[i])))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
