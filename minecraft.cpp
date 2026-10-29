@@ -121,14 +121,32 @@ struct FaceList
 };
 
 // a flat shape with a variable number of corners, used for clipping
-// a 4 corner face cut by near wall has at most 5 corners
-// 8 leaves room to spare
-const int MAX_POLYGON_POINTS = 8;
+// each straight cut can add at most 1 corner: 4 corners, +1 from the
+// near wall, +1 from each of the 4 screen edges = 9 at most
+// 12 leaves room to spare
+const int MAX_POLYGON_POINTS = 12;
 
 struct Polygon
 {
     Vector3 points[MAX_POLYGON_POINTS];
     int size;
+};
+
+// same idea as Polygon, but for points already projected onto the
+// screen (pixels), used for cutting a face to the window's edges
+struct ScreenPolygon
+{
+    Vector2 points[MAX_POLYGON_POINTS];
+    int size;
+};
+
+// the 4 edges of the window, used to cut faces into the visible area
+enum ScreenEdge
+{
+    EDGE_LEFT,  // x = 0
+    EDGE_RIGHT, // x = screen_width()
+    EDGE_TOP,   // y = 0
+    EDGE_BOTTOM // y = screen_height()
 };
 
 void init_block_array(BlockArray &arr)
@@ -174,6 +192,7 @@ Vector3 world_to_camera(const Camera &cam, const Vector3 &p)
 
     return {rx, ry, rz};
 }
+
 /**
  * step 2 of projection: perspective divide, camera space -> screen pixel
  * further away means bigger z, so closer to middle of screen
@@ -258,6 +277,109 @@ Polygon clip_polygon_to_near_plane(const Polygon &input)
     }
 
     return output;
+}
+
+// is this pixel on the window side of the given edge?
+bool is_inside_egde(const Vector2 &p, ScreenEdge edge)
+{
+    switch (edge)
+    {
+    case EDGE_LEFT:
+        return p.x >= 0;
+    case EDGE_RIGHT:
+        return p.x <= screen_width();
+    case EDGE_TOP:
+        return p.y >= 0;
+    case EDGE_BOTTOM:
+        return p.y <= screen_height();
+    }
+    return true; // fallback, but should never occur
+}
+
+/**
+ * finds where the line from a to b crosses the given window edge
+ * same idea as near_plane_intersection, but in 2D:
+ *      t = how far along the line the edge is at (0 at a, 1 at b)
+ *      only called when one end is outside and one is inside
+ *      so the division is never with zero.
+ */
+Vector2 edge_intersection(const Vector2 &a, const Vector2 &b, ScreenEdge edge)
+{
+    double t = 0;
+
+    switch (edge)
+    {
+    case EDGE_LEFT:
+        t = (0 - a.x) / (b.x - a.x);
+        break;
+    case EDGE_RIGHT:
+        t = (screen_width() - a.x) / (b.x - a.x);
+        break;
+    case EDGE_TOP:
+        t = (0 - a.y) / (b.y - a.y);
+        break;
+    case EDGE_BOTTOM:
+        t = (screen_height() - a.y) / (b.y - a.y);
+        break;
+    }
+
+    // move that fraction of the way from a to b
+    return {a.x + t * (b.x - a.x), a.y + t * (b.y - a.y)};
+}
+
+/**
+ * cuts a screen polygon along one window edge, keeping the inside part
+ * exactly the same two rules as clip_polygon_to_near_plane:
+ *      keep the start corner if it's inside
+ *      add the crossing point if the edge goes through the window edge
+ */
+ScreenPolygon clip_to_screen_edge(const ScreenPolygon &input, ScreenEdge edge)
+{
+    ScreenPolygon output;
+    output.size = 0;
+
+    for (int i = 0; i < input.size; i++)
+    {
+        Vector2 current = input.points[i];
+        Vector2 next = input.points[(i + 1) % input.size];
+
+        bool current_inside = is_inside_egde(current, edge);
+        bool next_inside = is_inside_egde(next, edge);
+
+        // first rule: corners inside the window stay.
+        if (current_inside)
+        {
+            output.points[output.size] = current;
+            output.size++;
+        }
+
+        // second rule: edge crosses the window edge, so add the crossing point
+        if (current_inside != next_inside)
+        {
+            output.points[output.size] = edge_intersection(current, next, edge);
+            output.size++;
+        }
+    }
+
+    return output;
+}
+
+/**
+ * cuts a screen polygon down to the window, one edge at a time
+ * each cut works on the result of the cut before it, so after all
+ * 4 every corner is inside the window (small, safe pixel values
+ * that SplashKit's triangle filling can handle)
+ */
+ScreenPolygon clip_polygon_to_screen(const ScreenPolygon &input)
+{
+    ScreenPolygon result = input;
+
+    result = clip_to_screen_edge(result, EDGE_LEFT);
+    result = clip_to_screen_edge(result, EDGE_RIGHT);
+    result = clip_to_screen_edge(result, EDGE_TOP);
+    result = clip_to_screen_edge(result, EDGE_BOTTOM);
+
+    return result;
 }
 
 void draw_3d_line(const Camera &cam, const Vector3 &start, const Vector3 &end, color line_color)
@@ -488,7 +610,7 @@ void collect_visible_faces(const Camera &cam, const BlockArray &world, FaceList 
  */
 void sort_faces_far_to_close(FaceList &faces)
 {
-    for (int i = 0; i < faces.size; i++)
+    for (int i = 1; i < faces.size; i++)
     {
         FaceRef current = faces.data[i];
         int j = i - 1;
@@ -527,19 +649,35 @@ void draw_face(const Camera &cam, const Block &b, int face)
     }
 
     // step 3: every remaining corner is in front of the wall, so can divide
-    Vector2 screen[MAX_POLYGON_POINTS];
+    ScreenPolygon screen_shape;
+    screen_shape.size = clipped.size;
     for (int i = 0; i < clipped.size; i++)
     {
-        screen[i] = camera_to_screen(cam, clipped.points[i]);
+        screen_shape.points[i] = camera_to_screen(cam, clipped.points[i]);
+    }
+
+    // corners close to the camera can land tens of thousands of pixels
+    // off screen, which overflows SplashKit's triangle filling (it uses
+    // 16-bit numbers, max 32767) and causes the lag and random shapes.
+    // cutting to the window keeps every corner inside it
+    ScreenPolygon on_screen = clip_polygon_to_screen(screen_shape);
+
+    // face is entirely off the size of the window, so dont render
+    if (on_screen.size < 3)
+    {
+        return;
     }
 
     color fill = shade_colour(block_colour(b.type), FACE_SHADE[face]);
 
     // triangle fan: every triangle shares corner 0
-    // 4 corners gives (0,1,2) (0,2,3), 5 corners adds (0,3,4)
-    for (int i = 0; i < clipped.size - 1; i++)
+    // starts at 1, starting with 0 would give 0,0,1, a triangle with no area
+    for (int i = 1; i < on_screen.size - 1; i++)
     {
-        fill_triangle(fill, screen[0].x, screen[0].y, screen[i].x, screen[i].y, screen[i + 1].x, screen[i + 1].y);
+        fill_triangle(fill,
+                      on_screen.points[0].x, on_screen.points[0].y,
+                      on_screen.points[i].x, on_screen.points[i].y,
+                      on_screen.points[i + 1].x, on_screen.points[i + 1].y);
     }
 
     // outline 4 real edges with draw_3d_line which clips them itself
