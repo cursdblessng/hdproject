@@ -38,3 +38,6 @@ void handle_block_place(const Camera &cam, BlockArray &world, BlockType selected
 
 // f11 toggles between fullscreen and windowed
 void handle_fullscreen_toggle(bool is_cursor_locked);
+
+// x toggles see-through faces (debug view)
+void handle_see_through_toggle(bool &see_through);

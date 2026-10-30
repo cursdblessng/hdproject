@@ -42,6 +42,10 @@ const Vector3 FACE_NORMALS[NUM_FACES] = {
 // top is brightest like sunlight from above, bottom is darkest
 const double FACE_SHADE[NUM_FACES] = {0.5, 1.0, 0.8, 0.8, 0.65, 0.65};
 
+// how solid faces are in see-through mode: 0 = invisible, 255 = solid.
+// 128 is about half, enough to see the faces behind but still tell them apart
+const int SEE_THROUGH_ALPHA = 128;
+
 /**
  * one visible face waiting to be drawn
  * stores which block and which face instead of the projected points
@@ -442,12 +446,14 @@ double distance_squared(const Vector3 &a, const Vector3 &b)
     double dz = a.z - b.z;
     return dx * dx + dy * dy + dz * dz;
 }
+
 // darkens a colour by factor between 0 and 1
 color shade_colour(color base, double factor)
 {
-    return rgb_color((int)(red_of(base) * factor),
+    return rgba_color((int)(red_of(base) * factor),
                      (int)(green_of(base) * factor),
-                     (int)(blue_of(base) * factor));
+                     (int)(blue_of(base) * factor),
+                    alpha_of(base));
 }
 
 /**
@@ -509,7 +515,8 @@ void sort_faces_far_to_close(FaceList &faces)
 }
 
 // projects one face to the screen, cutting off any part behind the near wall
-void draw_face(const Camera &cam, const Block &b, int face)
+// see_through draws it at half opacity, so hidden faces behind it show
+void draw_face(const Camera &cam, const Block &b, int face, bool see_through)
 {
     CubeCorners c = get_block_corners(b);
 
@@ -553,6 +560,14 @@ void draw_face(const Camera &cam, const Block &b, int face)
 
     color fill = shade_colour(block_colour(b.type), FACE_SHADE[face]);
 
+    // same colour, but with the alpha lowered so faces behind show through
+    // works because faces are drawn far to near, so each one
+    // blends with whatever is already drawn behind it
+    if (see_through)
+    {
+        fill = rgba_color(red_of(fill), green_of(fill), blue_of(fill), SEE_THROUGH_ALPHA);
+    }
+
     // triangle fan: every triangle shares corner 0
     // starts at 1, starting with 0 would give 0,0,1, a triangle with no area
     for (int i = 1; i < on_screen.size - 1; i++)
@@ -565,7 +580,8 @@ void draw_face(const Camera &cam, const Block &b, int face)
 
     // outline 4 real edges with draw_3d_line which clips them itself
     // outlining the clipped shape would also draw the cut along the near
-    // wall, which isnt a real edge of the block
+    // wall, which isnt a real edge of the block.
+    // shade_colour keeps fill's alpha, so outlines go see-through too
     color outline = shade_colour(fill, 0.6);
     for (int i = 0; i < 4; i++)
     {
@@ -575,7 +591,7 @@ void draw_face(const Camera &cam, const Block &b, int face)
 }
 
 // collect then sort then draw far to near
-void draw_world_solid(const Camera &cam, const BlockArray &world)
+void draw_world_solid(const Camera &cam, const BlockArray &world, bool see_through)
 {
     // made fresh every frame because the camera moves, so which faces are are visible and their order changes each frame
     FaceList faces;
@@ -586,7 +602,7 @@ void draw_world_solid(const Camera &cam, const BlockArray &world)
     for (int i = 0; i < faces.size; i++)
     {
         FaceRef f = faces.data[i];
-        draw_face(cam, world.data[f.block_index], f.face);
+        draw_face(cam, world.data[f.block_index], f.face, see_through);
     }
 }
 

@@ -360,12 +360,21 @@ void handle_fullscreen_toggle(bool is_cursor_locked)
             move_current_window_to((monitor_width - WINDOWED_WIDTH) / 2, (monitor_height - WINDOWED_HEIGHT) / 2);
         }
 
-        // recenter mouse otherwise toggle is detected as mouse movement 
+        // recenter mouse otherwise toggle is detected as mouse movement
         // same fix as locking cursor with escape previously
         if (is_cursor_locked)
         {
             move_mouse(screen_width() / 2.0, screen_height() / 2.0);
             mouse_movement();
         }
+    }
+}
+
+// x toggles see-through faces, a debug view for checking which faces are drawn
+void handle_see_through_toggle(bool &see_through)
+{
+    if (key_typed(X_KEY))
+    {
+        see_through = !see_through;
     }
 }

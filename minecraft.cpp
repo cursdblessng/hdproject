@@ -33,6 +33,9 @@ int main()
     // which block right click places, changed with keys 1-6
     BlockType selected_block = GRASS;
 
+    // debug view: half transparent faces, toggled with x
+    bool see_through = false;
+
     // measures frames per second, in render.cpp
     FpsCounter fps_counter;
     fps_counter.last_update_ticks = current_ticks();
@@ -52,6 +55,7 @@ int main()
         handle_cursor_toggle(is_cursor_locked);
         handle_fullscreen_toggle(is_cursor_locked);
         handle_fly_toggle(player);
+        handle_see_through_toggle(see_through);
         handle_block_select(selected_block);
         handle_movement(cam, player, world);
 
@@ -68,7 +72,7 @@ int main()
         clear_screen(COLOR_SKY_BLUE);
 
         draw_grid(cam, 20);
-        draw_world_solid(cam, world);
+        draw_world_solid(cam, world, see_through);
 
         // crosshair
         fill_circle(COLOR_WHITE, screen_width() / 2.0, screen_height() / 2.0, 2);
