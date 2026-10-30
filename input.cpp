@@ -328,3 +328,44 @@ void handle_block_place(const Camera &cam, BlockArray &world, BlockType selected
         add_block(world, new_block);
     }
 }
+
+/**
+ * f11 switches between fullscreen and an 800x600 window.
+ * toggling fullscreen on its own just stretches the 800x600 image over the
+ * screen (blurry and squashed), so the window is resized to the monitor's
+ * size first, which makes splashkit draw at full resolution.
+ * everything else uses screen_width() / screen_height(), so the rendering
+ * adapts to the new size automatically
+ */
+void handle_fullscreen_toggle(bool is_cursor_locked)
+{
+    if (key_typed(F11_KEY))
+    {
+        // 0 is the display number
+        int monitor_width = display_width(display_details(0));
+        int monitor_height = display_height(display_details(0));
+
+        if (!current_window_is_fullscreen())
+        {
+            // resize first THEN fullscreen to avoid window stretching
+            resize_current_window(monitor_width, monitor_height);
+            current_window_toggle_fullscreen();
+        }
+        else
+        {
+            // leave fullscreen and go back to windowed
+            // also moves window to the middle of the monitor
+            current_window_toggle_fullscreen();
+            resize_current_window(WINDOWED_WIDTH, WINDOWED_HEIGHT);
+            move_current_window_to((monitor_width - WINDOWED_WIDTH) / 2, (monitor_height - WINDOWED_HEIGHT) / 2);
+        }
+
+        // recenter mouse otherwise toggle is detected as mouse movement 
+        // same fix as locking cursor with escape previously
+        if (is_cursor_locked)
+        {
+            move_mouse(screen_width() / 2.0, screen_height() / 2.0);
+            mouse_movement();
+        }
+    }
+}

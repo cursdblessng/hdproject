@@ -5,14 +5,14 @@
 
 int main()
 {
-    open_window("poopcraft", 800, 600);
+    open_window("poopcraft", WINDOWED_WIDTH, WINDOWED_HEIGHT);
 
     Camera cam;
     // Moved camera up slightly so we can see the grid below us
     cam.position = {0, 2, -5};
     cam.yaw = 0.0;
     cam.pitch = 0.0;
-    cam.fov = 1.0;
+    cam.fov = 2.0;
 
     BlockArray world;
     init_block_array(world);
@@ -40,6 +40,7 @@ int main()
 
         // inputs
         handle_cursor_toggle(is_cursor_locked);
+        handle_fullscreen_toggle(is_cursor_locked);
         handle_fly_toggle(player);
         handle_block_select(selected_block);
         handle_movement(cam, player, world);

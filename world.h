@@ -47,6 +47,11 @@ const int MAX_BLOCKS = 10000;
 // can place blocks on it. used by collision (input.cpp) and the raycast (world.cpp)
 const double WORLD_FLOOR_Y = 0.0;
 
+// window size when not fullscreen. used when the window first opens and
+// when coming back out of fullscreen, so the two always match
+const int WINDOWED_WIDTH = 800;
+const int WINDOWED_HEIGHT = 600;
+
 struct BlockArray
 {
     Block data[MAX_BLOCKS];

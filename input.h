@@ -35,3 +35,6 @@ void handle_block_select(BlockType &selected_block);
 
 // right click places the block against whatever crosshair is on
 void handle_block_place(const Camera &cam, BlockArray &world, BlockType selected_block);
+
+// f11 toggles between fullscreen and windowed
+void handle_fullscreen_toggle(bool is_cursor_locked);
