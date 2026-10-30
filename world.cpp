@@ -165,20 +165,41 @@ bool point_in_block(const Vector3 &p, const Block &b)
 }
 
 /**
- * which block is the crosshair pointing at?
- * walks from the camera along the look direction in small steps
- * returns the index of the first active block a step lands inside.
- * stepping outwards from the camera means the first hit is always the nearest block,
- * so you cant hit a block hidden behind another one.
- * returns -1 if nothing is within reach (-1 can never be a real index)
+ * the min corner of the 1x1x1 grid cell this point is in
+ * floor (not a plain int cast) because (int)-0.5 is 0.0
+ * which is the wrong cell for negative numbers. floor(-0.5) is -1
  */
-int raycast_block(const Camera &cam, const BlockArray &world)
+Vector3 cell_of(const Vector3 &p)
 {
+    return {floor(p.x), floor(p.y), floor(p.z)};
+}
+
+/**
+ * what is the crosshair pointing at?
+ * walks from the camera along the look direction in small steps
+ * stepping outwards means the first hit is always the nearest block
+ * so you cant hit a block hidden behind a closer one
+ * also remembers the last point that was in empty space:
+ * when something is hit, the point is right in front of the face
+ * you're looking at, so its cell is where a new block should be placed.
+ */
+RayHit raycast_block(const Camera &cam, const BlockArray &world)
+{
+    // start with 'nothing found', only changed if something is hit
+    RayHit result;
+    result.block_index = -1;
+    result.can_place = false;
+    result.place_position = {0.0, 0.0, 0.0};
+
     Vector3 dir = look_direction(cam);
 
-    // count steps with an int rather than adding RAY_STEP to a double over and over,
+    // count steps with an int rather than adding RAY_STEP to a double over and over
     // so tiny rounding errors dont build up along the way
     int num_steps = (int)(REACH / RAY_STEP);
+
+    // the last point that wasnt inside anything.
+    // starts at the eye, which can never be inside a block bc collision
+    Vector3 previous = cam.position;
 
     for (int s = 0; s <= num_steps; s++)
     {
@@ -188,15 +209,28 @@ int raycast_block(const Camera &cam, const BlockArray &world)
                          cam.position.y + dir.y * distance,
                          cam.position.z + dir.z * distance};
 
+        // went through the floor: nothing to break, but a block can go on it
+        if (point.y < WORLD_FLOOR_Y)
+        {
+            result.can_place = true;
+            result.place_position = cell_of(previous);
+            return result;
+        }
+
         for (int i = 0; i < world.size; i++)
         {
-            // broken blocks are inactive, the ray should pass straight through them
             if (world.data[i].is_active && point_in_block(point, world.data[i]))
             {
-                return i;
+                result.block_index = i;
+                result.can_place = true;
+                result.place_position = cell_of(previous);
+                return result;
             }
         }
+
+        // this point was empty, so it becomes the new "last empty point"
+        previous = point;
     }
 
-    return -1; // reached REACH value without hitting any block
+    return result; // reached REACH without hitting anything, still "nothing found"
 }

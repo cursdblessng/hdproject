@@ -43,6 +43,10 @@ struct Camera
 
 const int MAX_BLOCKS = 10000;
 
+// the grid is at y = 0, treat it as solid ground: you stand on it and
+// can place blocks on it. used by collision (input.cpp) and the raycast (world.cpp)
+const double WORLD_FLOOR_Y = 0.0;
+
 struct BlockArray
 {
     Block data[MAX_BLOCKS];
@@ -76,6 +80,14 @@ struct Box
     Vector3 max; // largest x, y and z corner
 };
 
+// what the crosshair ray found
+struct RayHit
+{
+    int block_index;        // block that was hit, -1 if none (or only the floor was hit)
+    bool can_place;         // true if the ray hit a block or the floor within reach
+    Vector3 place_position; // min corner of the empty cell a new block would go in
+};
+
 // empties the block array so blocks can be added from index 0
 void init_block_array(BlockArray &arr);
 
@@ -91,8 +103,14 @@ CubeCorners get_block_corners(const Block &b);
 // fills the world with the hand placed test blocks
 void build_test_world(BlockArray &world);
 
+// do two boxes overlap
+bool boxes_overlap(const Box &a, const Box &b);
+
+// the space a block fills, from its min corner position to min corner + 1
+Box block_box(const Block &b);
+
 // does this block overlap any active block? used for player collision
 bool box_hits_world(const Box &box, const BlockArray &world);
 
-// index of the block the crosshair is pointing at, or -1 if none within reach
-int raycast_block(const Camera &cam, const BlockArray &world);
+// what the crosshair is pointing at: which block, and where a new block would go
+RayHit raycast_block(const Camera &cam, const BlockArray &world);

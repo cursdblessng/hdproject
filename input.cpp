@@ -9,10 +9,6 @@ const double PLAYER_WIDTH = 0.6;  // 0.6 blocks wide
 // camera sits 1.5 blocks above bottom of the player, middle of top block
 const double EYE_HEIGHT = 1.5;
 
-// the grid is at y = 0, treat it as solid ground
-// so walking off grass patch doesnt fall
-const double WORLD_FLOOR_Y = 0.0;
-
 // how much downward speed is added every frame (blocks per frame, per frame)
 const double GRAVITY = 0.008;
 
@@ -241,24 +237,94 @@ void handle_fly_toggle(Player &player)
 }
 
 /**
- * left click breaks the block under the crosshair
- * breaking = setting is_active to false.
- * rendering, collision, and the raycast skip inactive blocks
- * so it disappears, can be walked through, and the ray passes through the gap
- * mouse_clicked (not mouse_down) so one click breaks the block
- * instead of one block per every frame the button is held
+ * left click breaks the block under the crosshair.
+ * the block is removed from the array completely (not just made inactive),
+ * so its slot can be used again when placing. a dead slot would otherwise
+ * stay used up forever, and the array would slowly fill with nothing.
+ * mouse_clicked (not mouse_down) so one click breaks one block, instead
+ * of one block every frame the button is held
  */
 void handle_block_break(const Camera &cam, BlockArray &world)
 {
     if (mouse_clicked(LEFT_BUTTON))
     {
-        int hit = raycast_block(cam, world);
+        RayHit hit = raycast_block(cam, world);
 
-        // -1 means nothing within reach, and isnt a real index
-        // so world.data[-1] would read outside the array
-        if (hit != -1)
+        // -1 means nothing to break (missed, or only hit the floor),
+        // and isn't a real index, so world.data[-1] would read outside the array
+        if (hit.block_index != -1)
         {
-            world.data[hit].is_active = false;
+            // fill the hole with the last block, then shrink the array by one.
+            // the last slot is now outside 0..size-1 so nothing reads it,
+            // which means a copy is enough, no need for a real swap.
+            // the order of blocks doesn't matter: drawing sorts by distance
+            // and the raycast picks the nearest block, never by index
+            world.data[hit.block_index] = world.data[world.size - 1];
+            world.size--;
         }
+    }
+}
+
+/**
+ * number keys 1 to 6 choose which block type right click will place
+ * in the same order as the BlockType enum.
+ * key_down would work here
+ * key_typed used to match other parts of the code
+ */
+void handle_block_select(BlockType &selected_block)
+{
+    if (key_typed(NUM_1_KEY))
+    {
+        selected_block = GRASS;
+    }
+    if (key_typed(NUM_2_KEY))
+    {
+        selected_block = DIRT;
+    }
+    if (key_typed(NUM_3_KEY))
+    {
+        selected_block = STONE;
+    }
+    if (key_typed(NUM_4_KEY))
+    {
+        selected_block = WOOD;
+    }
+    if (key_typed(NUM_5_KEY))
+    {
+        selected_block = LEAVES;
+    }
+    if (key_typed(NUM_6_KEY))
+    {
+        selected_block = WATER;
+    }
+}
+
+/**
+ * right click places the selected block type against whatever the crosshair is on.
+ * refuses to place a block that overlaps the player, because player would be stuck inside it.
+ * add_block puts it at index 'size', which is exactly the slot breaking a block freed.
+ * so breaking and placing doesnt waste slots in block array.
+ */
+void handle_block_place(const Camera &cam, BlockArray &world, BlockType selected_block)
+{
+    if (mouse_clicked(RIGHT_BUTTON))
+    {
+        RayHit hit = raycast_block(cam, world);
+
+        // nothing within reach to place against
+        if (!hit.can_place)
+        {
+            return;
+        }
+
+        Block new_block = {hit.place_position, selected_block, true};
+
+        if (boxes_overlap(block_box(new_block), player_box(cam.position)))
+        {
+            return;
+        }
+
+        // passed both checks, so place the block in the world
+        add_block(world, new_block);
     }
 }

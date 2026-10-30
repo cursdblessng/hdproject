@@ -29,3 +29,9 @@ void handle_fly_toggle(Player &player);
 
 // left click breaks the block the crosshair is on
 void handle_block_break(const Camera &cam, BlockArray &world);
+
+// numbers 1-6 pick which block is placed
+void handle_block_select(BlockType &selected_block);
+
+// right click places the block against whatever crosshair is on
+void handle_block_place(const Camera &cam, BlockArray &world, BlockType selected_block);

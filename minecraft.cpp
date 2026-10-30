@@ -26,6 +26,9 @@ int main()
     player.on_ground = false; // spawns in the air
     player.is_flying = false;
 
+    // which block right click places, changed with keys 1-6
+    BlockType selected_block = GRASS;
+
     hide_mouse();
     move_mouse(screen_width() / 2.0, screen_height() / 2.0);
 
@@ -38,6 +41,7 @@ int main()
         // inputs
         handle_cursor_toggle(is_cursor_locked);
         handle_fly_toggle(player);
+        handle_block_select(selected_block);
         handle_movement(cam, player, world);
 
         if (is_cursor_locked)
@@ -46,6 +50,7 @@ int main()
 
             // after mouse look, so the ray uses where you're looking THIS frame
             handle_block_break(cam, world);
+            handle_block_place(cam, world, selected_block);
         }
 
         // drawing
@@ -56,6 +61,10 @@ int main()
 
         // crosshair
         fill_circle(COLOR_WHITE, screen_width() / 2.0, screen_height() / 2.0, 2);
+
+        // TEMPORARY: small square in the bottom left showing the selected block's
+        // colour, so you can tell what you're holding. a proper hotbar comes later
+        fill_rectangle(block_colour(selected_block), 10, screen_height() - 40, 30, 30);
 
         refresh_screen(60);
     }
