@@ -94,6 +94,44 @@ void build_test_world(BlockArray &world)
 }
 
 /**
+ * fills world with flat square. size x size, 5 blocks down
+ * y = 0 to 1: stone. 2 to 3: dirt. 4: grass. surface at y = 5
+ * centered around the origin so spawn is 0,0
+ */
+void build_superflat(BlockArray &world, int size)
+{
+    // start at -size/2 so the square is centered on 0,
+    // so something like size 20 goes from -10 to 9
+    int start = -size / 2;
+
+    for (int x = start; x < start + size; x++)
+    {
+        for (int z = start; z < start + size; z++)
+        {
+            for (int y = 0; y < 5; y++)
+            {
+                // bottom two layers stone, then two dirt, then grass
+                BlockType type;
+                if (y <= 1)
+                {
+                    type = STONE;
+                }
+                else if (y <= 3)
+                {
+                    type = DIRT;
+                }
+                else
+                {
+                    type = GRASS;
+                }
+
+                add_block(world, {{(double)x, (double)y, (double)z}, type, true});
+            }
+        }
+    }
+}
+
+/**
  * do two boxes overlap?
  * on one axis, two ranges overlap if each one starts before the other ends.
  * boxes only overlap if that's true on x, y AND z at the same time.

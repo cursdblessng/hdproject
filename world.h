@@ -113,6 +113,10 @@ CubeCorners get_block_corners(const Block &b);
 // fills the world with the hand placed test blocks
 void build_test_world(BlockArray &world);
 
+// fills the world with flat square. size x size, 5 blocks down
+// 1 grass, 2 dirt, 2 stone
+void build_superflat(BlockArray &world, int size);
+
 // do two boxes overlap
 bool boxes_overlap(const Box &a, const Box &b);
 

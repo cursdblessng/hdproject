@@ -10,14 +10,17 @@ int main()
 
     Camera cam;
     // Moved camera up slightly so we can see the grid below us
-    cam.position = {0, 2, -5};
+    cam.position = {0.5, 7.0, 0.5};
     cam.yaw = 0.0;
     cam.pitch = 0.0;
     cam.fov = 2.0;
 
     BlockArray world;
     init_block_array(world);
-    build_test_world(world);
+    
+    // build superflat world
+    const int SUPERFLAT_SIZE = 20;
+    build_superflat(world, SUPERFLAT_SIZE);
 
     bool is_cursor_locked = true;
 
