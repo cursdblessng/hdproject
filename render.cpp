@@ -2,7 +2,6 @@
 #include "splashkit.h"
 #include <cmath> // cos, sin, tan
 
-
 // ============================================================
 // CONSTANTS AND STRUCTS
 // ============================================================
@@ -94,7 +93,6 @@ enum ScreenEdge
     EDGE_BOTTOM // y = screen_height()
 };
 
-
 // ============================================================
 // PROJECTION (world -> camera space -> screen)
 // ============================================================
@@ -140,7 +138,6 @@ Vector2 camera_to_screen(const Camera &cam, const Vector3 &c)
 
     return {screen_x, screen_y};
 }
-
 
 // ============================================================
 // CLIPPING (near wall and window edges)
@@ -307,7 +304,6 @@ ScreenPolygon clip_polygon_to_screen(const ScreenPolygon &input)
     return result;
 }
 
-
 // ============================================================
 // LINES AND WIREFRAME
 // ============================================================
@@ -390,7 +386,6 @@ void draw_world_wireframe(const Camera &cam, const BlockArray &world)
         }
     }
 }
-
 
 // ============================================================
 // SOLID FACES (culling, painter's algorithm)
@@ -593,4 +588,39 @@ void draw_world_solid(const Camera &cam, const BlockArray &world)
         FaceRef f = faces.data[i];
         draw_face(cam, world.data[f.block_index], f.face);
     }
+}
+
+// HUD BELOW
+
+// how often the fps number is recalculated.
+// averaging over half a second gives a steady number instead of one that flickers every frame
+const unsigned int FPS_UPDATE_MS = 500;
+
+/**
+ * counts this frame, then once FPS_UPDATE_MS has passed works out
+ * fps = frames / seconds, which is frames * 1000 / milliseconds.
+ * 1000.0 (not 1000) so the division is done with decimals,
+ * otherwise int division would chop off the fraction
+ */
+void update_fps_counter(FpsCounter &counter)
+{
+    counter.frames_since_update++;
+
+    unsigned int now = current_ticks();
+    unsigned int elapsed = now - counter.last_update_ticks;
+
+    if (elapsed >= FPS_UPDATE_MS)
+    {
+        counter.fps = counter.frames_since_update * 1000.0 / elapsed;
+
+        // start counting the next half second
+        counter.frames_since_update = 0;
+        counter.last_update_ticks = now;
+    }
+}
+
+// draws the fps in the top left corner, rounded down to a whole number
+void draw_fps_counter(const FpsCounter &counter)
+{
+    draw_text("FPS: " + std::to_string((int)counter.fps), COLOR_WHITE, 10, 10);
 }

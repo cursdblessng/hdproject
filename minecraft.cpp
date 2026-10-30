@@ -2,6 +2,7 @@
 #include "world.h"
 #include "render.h"
 #include "input.h"
+#include "iostream"
 
 int main()
 {
@@ -29,10 +30,16 @@ int main()
     // which block right click places, changed with keys 1-6
     BlockType selected_block = GRASS;
 
+    // measures frames per second, in render.cpp
+    FpsCounter fps_counter;
+    fps_counter.last_update_ticks = current_ticks();
+    fps_counter.frames_since_update = 0;
+    fps_counter.fps = 0.0;
+    
     hide_mouse();
     move_mouse(screen_width() / 2.0, screen_height() / 2.0);
 
-    double mouse_sensitivity = 0.003;
+    double mouse_sensitivity = 0.002;
 
     while (!quit_requested())
     {
@@ -67,7 +74,11 @@ int main()
         // colour, so you can tell what you're holding. a proper hotbar comes later
         fill_rectangle(block_colour(selected_block), 10, screen_height() - 40, 30, 30);
 
-        refresh_screen(60);
+        // last, so it's drawn on top of everything
+        update_fps_counter(fps_counter);
+        draw_fps_counter(fps_counter);
+
+        refresh_screen(TARGET_FPS);
     }
 
     close_window("poopcraft");

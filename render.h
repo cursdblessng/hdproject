@@ -11,3 +11,18 @@ void draw_world_wireframe(const Camera &cam, const BlockArray &world);
 
 // every active block as shaded solid faces (painter's algorithm)
 void draw_world_solid(const Camera &cam, const BlockArray &world);
+
+// frame rate measurement, kept in main because it has to remember
+// things between frames
+struct FpsCounter
+{
+    unsigned int last_update_ticks; // current_ticks() when fps was last worked out
+    int frames_since_update;        // frames drawn since then
+    double fps;                     // the number shown on screen
+};
+
+// call once per frame, counts the frame, and every half second works out the fps
+void update_fps_counter(FpsCounter &counter);
+
+// draws the fps in the top left corner
+void draw_fps_counter(const FpsCounter &counter);
