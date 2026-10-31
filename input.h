@@ -41,3 +41,9 @@ void handle_fullscreen_toggle(bool is_cursor_locked);
 
 // x toggles see-through faces (debug view)
 void handle_see_through_toggle(bool &see_through);
+
+// c detaches the view into a free flying debug camera (starts at the player's view)
+void handle_camera_detach_toggle(bool &is_detached, Camera &debug_cam, const Camera &player_cam);
+
+// flies a camera around with no gravity or collision (debug camera)
+void handle_free_fly(Camera &cam);

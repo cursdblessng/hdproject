@@ -70,8 +70,8 @@ struct FaceList
 
 // a flat shape with a variable number of corners, used for clipping
 // each straight cut can add at most 1 corner: 4 corners, +1 from the
-// near wall, +1 from each of the 4 screen edges = 9 at most
-// 12 leaves room to spare
+// player's near wall (debug view only), +1 from the view camera's near
+// wall, +1 from each of the 4 screen edges = 10 at most
 const int MAX_POLYGON_POINTS = 12;
 
 struct Polygon
@@ -125,6 +125,38 @@ Vector3 world_to_camera(const Camera &cam, const Vector3 &p)
     rz = dy * sin(-cam.pitch) + rz * cos(-cam.pitch);
 
     return {rx, ry, rz};
+}
+
+/**
+ * the reverse of world_to_camera, it takes in a point
+ * in camera space and then gives where it is in the world.
+ * redoes the rotations in the opposite order, pitch first then yaw,
+ * with the angles not negated, then adds the camera position back on.
+ * used to bring points cut along the players near wall back into the world
+ * this is so that they can be drawn using the debug camera.
+ */
+Vector3 camera_to_world(const Camera &cam, const Vector3 &c)
+{
+    // redo camera pitch
+    double dy = c.y * cos(cam.pitch) - c.z * sin(cam.pitch);
+    double rz = c.y * sin(cam.pitch) + c.z * cos(cam.pitch);
+
+    // redo the camera yaw
+    double dx = c.x * cos(cam.yaw) - rz * sin(cam.yaw);
+    double dz = c.x * sin(cam.yaw) + rz * cos(cam.yaw);
+
+    // back from the position thats relative to the camera to position relative to world
+    return {dx + cam.position.x, dy + cam.position.y, dz + cam.position.z};
+}
+
+/**
+ * returns bool, true if two cameras are in the same exact position facing same direction.
+ * true in normal play which lets draw_face skip the extra player-side clipping
+ */
+bool cameras_match(const Camera &a, const Camera &b)
+{
+    return a.position.x == b.position.x && a.position.y == b.position.y &&
+           a.position.z == b.position.z && a.yaw == b.yaw && a.pitch == b.pitch;
 }
 
 /**
@@ -203,6 +235,66 @@ Polygon clip_polygon_to_near_plane(const Polygon &input)
     }
 
     return output;
+}
+
+/**
+ * cuts a polygon given in world space along camera's near wall,
+ * gives back the part in front of near wall, in world space.
+ * clip_polygon_to_near_plane only works in camera space.
+ * when drawing from debug camera, this function is used to cut polygons
+ * around player near wall rather than the viewing camera near wall
+ */
+Polygon clip_world_polygon_to_near_plane(const Camera &cam, const Polygon &world_shape)
+{
+    Polygon cam_shape;
+    cam_shape.size = world_shape.size;
+    for (int i = 0; i < world_shape.size; i++)
+    {
+        cam_shape.points[i] = world_to_camera(cam, world_shape.points[i]);
+    }
+
+    Polygon clipped = clip_polygon_to_near_plane(cam_shape);
+
+    Polygon result;
+    result.size = clipped.size;
+    for (int i = 0; i < clipped.size; i++)
+    {
+        result.points[i] = camera_to_world(cam, clipped.points[i]);
+    }
+
+    return result;
+}
+
+/**
+ * same as above function but just for a line instead of whole polygon
+ * returns false if entire line is outside of wall
+ */
+bool clip_world_line_to_near_plane(const Camera &cam, Vector3 &start, Vector3 &end)
+{
+    Vector3 a = world_to_camera(cam, start);
+    Vector3 b = world_to_camera(cam, end);
+
+    bool a_in_front = a.z >= NEAR_PLANE;
+    bool b_in_front = b.z >= NEAR_PLANE;
+
+    if (!a_in_front && !b_in_front)
+    {
+        return false;
+    }
+
+    // same as draw_3d_line: slide the end thats behind the wall to the near plane
+    if (!a_in_front)
+    {
+        a = near_plane_intersection(a,b);
+    }
+    if (!b_in_front)
+    {
+        b = near_plane_intersection(a,b);
+    }
+    
+    start = camera_to_world(cam, a);
+    end = camera_to_world(cam, b);
+    return true;
 }
 
 // is this pixel on the window side of the given edge?
@@ -350,7 +442,6 @@ void draw_grid(const Camera &cam, int grid_radius)
 
     for (int i = -grid_radius; i <= grid_radius; i++)
     {
-        // FIXED: Explicitly cast all ints to doubles in the initializer lists
         draw_3d_line(cam,
                      {(double)-grid_radius, 0.0, (double)i},
                      {(double)grid_radius, 0.0, (double)i},
@@ -451,15 +542,15 @@ double distance_squared(const Vector3 &a, const Vector3 &b)
 color shade_colour(color base, double factor)
 {
     return rgba_color((int)(red_of(base) * factor),
-                     (int)(green_of(base) * factor),
-                     (int)(blue_of(base) * factor),
-                    alpha_of(base));
+                      (int)(green_of(base) * factor),
+                      (int)(blue_of(base) * factor),
+                      alpha_of(base));
 }
 
 /**
  * fills the list with every face that the camera is facing
  */
-void collect_visible_faces(const Camera &cam, const BlockArray &world, FaceList &faces)
+void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const BlockArray &world, FaceList &faces)
 {
     faces.size = 0;
 
@@ -474,7 +565,7 @@ void collect_visible_faces(const Camera &cam, const BlockArray &world, FaceList 
 
         for (int f = 0; f < NUM_FACES; f++)
         {
-            if (is_face_visible(cam, c, f))
+            if (is_face_visible(cull_cam, c, f))
             {
                 // list full, so stop adding.
                 if (faces.size >= MAX_VISIBLE_FACES)
@@ -482,7 +573,7 @@ void collect_visible_faces(const Camera &cam, const BlockArray &world, FaceList 
                     return;
                 }
 
-                faces.data[faces.size] = {i, f, distance_squared(cam.position, face_centre(c, f))};
+                faces.data[faces.size] = {i, f, distance_squared(view_cam.position, face_centre(c, f))};
                 faces.size++;
             }
         }
@@ -516,17 +607,41 @@ void sort_faces_far_to_close(FaceList &faces)
 
 // projects one face to the screen, cutting off any part behind the near wall
 // see_through draws it at half opacity, so hidden faces behind it show
-void draw_face(const Camera &cam, const Block &b, int face, bool see_through)
+void draw_face(const Camera &view_cam, const Camera &cull_cam, const Block &b, int face, bool see_through)
 {
     CubeCorners c = get_block_corners(b);
 
-    // projection steps 1 and 2 for the face's 4 corners
-    // stays in camera space so clipping can see each corner's depth
-    Polygon face_shape;
-    face_shape.size = 4;
+    // the face's 4 corners, still in world space
+    Polygon world_shape;
+    world_shape.size = 4;
     for (int i = 0; i < 4; i++)
     {
-        face_shape.points[i] = world_to_camera(cam, c.points[FACE_CORNERS[face][i]]);
+        world_shape.points[i] = c.points[FACE_CORNERS[face][i]];
+    }
+
+    // debug camera only: first cut away whatever is behind the PLAYER's near
+    // wall, so the debug view shows exactly what the player actually draws.
+    // skipped in normal play, where both cameras are the player and the
+    // view camera's own cut below already does this
+    bool is_debug_view = !cameras_match(view_cam, cull_cam);
+    if (is_debug_view)
+    {
+        world_shape = clip_world_polygon_to_near_plane(cull_cam, world_shape);
+
+        // whole face is behind the player, the player doesn't draw it
+        if (world_shape.size < 3)
+        {
+            return;
+        }
+    }
+
+    // projection steps 1 and 2 for the face's corners, from the VIEW camera
+    // stays in camera space so clipping can see each corner's depth
+    Polygon face_shape;
+    face_shape.size = world_shape.size;
+    for (int i = 0; i < world_shape.size; i++)
+    {
+        face_shape.points[i] = world_to_camera(view_cam, world_shape.points[i]);
     }
 
     // cut off whatever is behind the near wall
@@ -543,7 +658,7 @@ void draw_face(const Camera &cam, const Block &b, int face, bool see_through)
     screen_shape.size = clipped.size;
     for (int i = 0; i < clipped.size; i++)
     {
-        screen_shape.points[i] = camera_to_screen(cam, clipped.points[i]);
+        screen_shape.points[i] = camera_to_screen(view_cam, clipped.points[i]);
     }
 
     // corners close to the camera can land tens of thousands of pixels
@@ -586,23 +701,33 @@ void draw_face(const Camera &cam, const Block &b, int face, bool see_through)
     for (int i = 0; i < 4; i++)
     {
         int next = (i + 1) % 4;
-        draw_3d_line(cam, c.points[FACE_CORNERS[face][i]], c.points[FACE_CORNERS[face][next]], outline);
+        Vector3 start = c.points[FACE_CORNERS[face][i]];
+        Vector3 end = c.points[FACE_CORNERS[face][next]];
+
+        // debug camera: cut the edge along the player's near wall too, so
+        // the outline matches the cut face. skip it if it's all behind
+        if (is_debug_view && !clip_world_line_to_near_plane(cull_cam, start, end))
+        {
+            continue;
+        }
+
+        draw_3d_line(view_cam, start, end, outline);
     }
 }
 
 // collect then sort then draw far to near
-void draw_world_solid(const Camera &cam, const BlockArray &world, bool see_through)
+void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const BlockArray &world, bool see_through)
 {
     // made fresh every frame because the camera moves, so which faces are are visible and their order changes each frame
     FaceList faces;
 
-    collect_visible_faces(cam, world, faces);
+    collect_visible_faces(view_cam, cull_cam, world, faces);
     sort_faces_far_to_close(faces);
 
     for (int i = 0; i < faces.size; i++)
     {
         FaceRef f = faces.data[i];
-        draw_face(cam, world.data[f.block_index], f.face, see_through);
+        draw_face(view_cam, cull_cam, world.data[f.block_index], f.face, see_through);
     }
 }
 

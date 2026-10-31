@@ -378,3 +378,68 @@ void handle_see_through_toggle(bool &see_through)
         see_through = !see_through;
     }
 }
+
+/**
+ * c detaches the view from the player, giving a free flying debug camera.
+ * on detach the debug camera is set to a copy of the player's camera,
+ * so the view starts exactly where you were instead of jumping somewhere
+ */
+void handle_camera_detach_toggle(bool &is_detached, Camera &debug_cam, const Camera &player_cam)
+{
+    if (key_typed(C_KEY))
+    {
+        is_detached = !is_detached;
+
+        if (is_detached)
+        {
+            // copies position, yaw, pitch and fov all at once
+            debug_cam = player_cam;
+        }
+    }
+}
+
+/**
+ * moves a camera with no gravity and no collision for the debug camera.
+ * same as handle_movement but moves the camera directly instead of going through move_player.
+ * so it can fly through the blocks
+ */
+void handle_free_fly(Camera &cam)
+{
+    // move_speed is more because its more convenient
+    double move_speed = 0.2;
+
+    // direction the camera faces on the flat ground, and its right
+    double forward_x = -sin(cam.yaw);
+    double forward_z = cos(cam.yaw);
+    double right_x = cos(cam.yaw);
+    double right_z = sin(cam.yaw);
+
+    if (key_down(W_KEY))
+    {
+        cam.position.x += forward_x * move_speed;
+        cam.position.z += forward_z * move_speed;
+    }
+    if (key_down(S_KEY))
+    {
+        cam.position.x -= forward_x * move_speed;
+        cam.position.z -= forward_z * move_speed;
+    }
+    if (key_down(D_KEY))
+    {
+        cam.position.x += right_x * move_speed;
+        cam.position.z += right_z * move_speed;
+    }
+    if (key_down(A_KEY))
+    {
+        cam.position.x -= right_x * move_speed;
+        cam.position.z -= right_z * move_speed;
+    }
+    if (key_down(SPACE_KEY))
+    {
+        cam.position.y += move_speed;
+    }
+    if (key_down(LEFT_SHIFT_KEY))
+    {
+        cam.position.y -= move_speed;
+    }
+}

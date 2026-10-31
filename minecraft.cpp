@@ -2,14 +2,14 @@
 #include "world.h"
 #include "render.h"
 #include "input.h"
-#include "iostream"
 
 int main()
 {
     open_window("poopcraft", WINDOWED_WIDTH, WINDOWED_HEIGHT);
 
     Camera cam;
-    // Moved camera up slightly so we can see the grid below us
+    // spawn above the middle of the superflat: surface is at y = 5 and the
+    // eyes are 1.5 above the feet, so 7 drops you 0.5 onto the grass
     cam.position = {0.5, 7.0, 0.5};
     cam.yaw = 0.0;
     cam.pitch = 0.0;
@@ -17,7 +17,7 @@ int main()
 
     BlockArray world;
     init_block_array(world);
-    
+
     // build superflat world
     const int SUPERFLAT_SIZE = 20;
     build_superflat(world, SUPERFLAT_SIZE);
@@ -36,12 +36,17 @@ int main()
     // debug view: half transparent faces, toggled with x
     bool see_through = false;
 
+    // debug camera: c detaches the view from the player so you can fly
+    // around and look at the world from outside. the player stays frozen
+    bool is_camera_detached = false;
+    Camera debug_cam = cam; // overwritten on detach, set here so it's never garbage
+
     // measures frames per second, in render.cpp
     FpsCounter fps_counter;
     fps_counter.last_update_ticks = current_ticks();
     fps_counter.frames_since_update = 0;
     fps_counter.fps = 0.0;
-    
+
     hide_mouse();
     move_mouse(screen_width() / 2.0, screen_height() / 2.0);
 
@@ -56,23 +61,48 @@ int main()
         handle_fullscreen_toggle(is_cursor_locked);
         handle_fly_toggle(player);
         handle_see_through_toggle(see_through);
+        handle_camera_detach_toggle(is_camera_detached, debug_cam, cam);
         handle_block_select(selected_block);
-        handle_movement(cam, player, world);
+
+        // only one camera is controlled at a time. while detached the
+        // player is frozen: no movement, no gravity, no breaking or placing
+        if (is_camera_detached)
+        {
+            handle_free_fly(debug_cam);
+        }
+        else
+        {
+            handle_movement(cam, player, world);
+        }
 
         if (is_cursor_locked)
         {
-            handle_mouse_look(cam, mouse_sensitivity);
+            if (is_camera_detached)
+            {
+                handle_mouse_look(debug_cam, mouse_sensitivity);
+            }
+            else
+            {
+                handle_mouse_look(cam, mouse_sensitivity);
 
-            // after mouse look, so the ray uses where you're looking THIS frame
-            handle_block_break(cam, world);
-            handle_block_place(cam, world, selected_block);
+                // after mouse look, so the ray uses where you're looking THIS frame
+                handle_block_break(cam, world);
+                handle_block_place(cam, world, selected_block);
+            }
         }
 
         // drawing
         clear_screen(COLOR_SKY_BLUE);
 
-        draw_grid(cam, 20);
-        draw_world_solid(cam, world, see_through);
+        // draw from whichever camera is in control, a camera is only a few numbers so calculating it every frame is ok
+        Camera view_cam = cam;
+        if (is_camera_detached)
+        {
+            view_cam = debug_cam;
+        }
+
+        draw_grid(view_cam, 20);
+        draw_world_solid(view_cam, cam, world, see_through);
 
         // crosshair
         fill_circle(COLOR_WHITE, screen_width() / 2.0, screen_height() / 2.0, 2);
