@@ -498,6 +498,11 @@ Frustum make_frustum(const Camera &cam)
 
     f.slope_x = tan(cam.fov / 2.0);
 
+    // the screen is shorter than it is wide, so the top/bottom edges are
+    // closer to the middle, same slope scaled down by height / width.
+    // has to be set before margin_y below, which uses it
+    f.slope_y = f.slope_x * screen_height() / (double)screen_width();
+
     // the walls are slanted, so a ball's centre has to be further past the wall
     // measured along x (or y) than its radius for the whole ball to be past it.
     // along-x distance = right-angle distance * sqrt(1 + slope^2)
