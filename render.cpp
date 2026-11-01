@@ -62,7 +62,11 @@ struct FaceRef
 const int MAX_VISIBLE_FACES = 10000;
 
 // how many blocks out are rendered around the player
-const int RENDER_DISTANCE = 32;
+const int RENDER_DISTANCE = 60;
+
+// distance from a block's centre to its furthest corner, half of the cube's
+// diagonal: sqrt(0.5² + 0.5² + 0.5²) = sqrt(3) / 2, about 0.866.
+const double BLOCK_RADIUS = sqrt(3.0) / 2.0;
 
 struct FaceList
 {
@@ -97,6 +101,21 @@ enum ScreenEdge
     EDGE_RIGHT, // x = screen_width()
     EDGE_TOP,   // y = 0
     EDGE_BOTTOM // y = screen_height()
+};
+
+/**
+ * frustum shape from camera
+ */
+struct Frustum
+{
+    Vector3 position; // camera position
+    Vector3 right;    // camera space +x
+    Vector3 up;       // camera space +y
+    Vector3 forward;  // camera space +z
+    double slope_x;   // left/right screen edges
+    double slope_y;   // top/bottom screen edges
+    double margin_x;  // how far past left/right wall a block's centre can be and still poke through wall
+    double margin_y;  // same for top and bottom
 };
 
 // ============================================================
@@ -456,6 +475,96 @@ void draw_grid(const Camera &cam, int grid_radius)
     }
 }
 
+/**
+ * frustum culling, any polygon not within view doesnt get rendered
+ * screen clipping does this but after the calculations already happen
+ * this makes it so that the calculations dont happen before they are rendered then clipped
+ */
+Frustum make_frustum(const Camera &cam)
+{
+    Frustum f;
+    f.position = cam.position;
+
+    double sin_yaw = sin(cam.yaw);
+    double cos_yaw = cos(cam.yaw);
+    double sin_pitch = sin(cam.pitch);
+    double cos_pitch = cos(cam.pitch);
+
+    f.right = {cos_yaw, 0.0, sin_yaw};
+    f.up = {-sin_yaw * sin_pitch, cos_pitch, cos_yaw * sin_pitch};
+    f.forward = {-sin_yaw * cos_pitch, -sin_pitch, cos_yaw * cos_pitch};
+
+    f.slope_x = tan(cam.fov / 2.0);
+
+    // the walls are slanted, so a ball's centre has to be further past the wall
+    // measured along x (or y) than its radius for the whole ball to be past it.
+    // along-x distance = right-angle distance * sqrt(1 + slope^2)
+    // (slope 0 = flat wall, sqrt(1) = no change. slope 1 = 45 degrees, sqrt(2))
+    f.margin_x = BLOCK_RADIUS * sqrt(1.0 + f.slope_x * f.slope_x);
+    f.margin_y = BLOCK_RADIUS * sqrt(1.0 + f.slope_y * f.slope_y);
+
+    // the screen is shorter than it is wide, so the top/bottom edges are
+    // closer to the middle, same slope scaled down by height / width.
+    f.slope_y = f.slope_x * screen_height() / (double)screen_width();
+
+    return f;
+}
+
+double dot_product(const Vector3 &a, const Vector3 &b)
+{
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+/**
+ * could any part of the block be inside the frustum at all
+ * finds the block centre's camera space coords
+ * then checks it against all 5 walls of frustum
+ */
+bool block_in_frustum(const Frustum &f, int x, int y, int z)
+{
+    // offset from the camera to the block's center
+    // +0.5 because xyz is the block's min corner not the middle
+    Vector3 offset = {x + 0.5 - f.position.x, y + 0.5 - f.position.y, z + 0.5 - f.position.z};
+
+    double cam_x = dot_product(offset, f.right); // how far right
+    double cam_y = dot_product(offset, f.up);
+    double cam_z = dot_product(offset, f.forward);
+
+    // behind the near wall, even the closest edge of the ball.
+    // checked first because about half of all blocks are behind
+    if (cam_z < NEAR_PLANE - BLOCK_RADIUS)
+    {
+        return false;
+    }
+
+    // past the right wall: further right than z * slope_x, by more than the margin
+    if (cam_x - cam_z * f.slope_x > f.margin_x)
+    {
+        return false;
+    }
+
+    // past the left wall: same test mirrored, -x instead of x
+    if (-cam_x - cam_z * f.slope_x > f.margin_x)
+    {
+        return false;
+    }
+
+    // past the top wall
+    if (cam_y - cam_z * f.slope_y > f.margin_y)
+    {
+        return false;
+    }
+
+    // past the bottom wall
+    if (-cam_y - cam_z * f.slope_y > f.margin_y)
+    {
+        return false;
+    }
+
+    // not completely past any wall, so (some of) it might be on screen
+    return true;
+}
+
 // ============================================================
 // SOLID FACES (culling, painter's algorithm)
 // ============================================================
@@ -546,6 +655,8 @@ void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const
 {
     faces.size = 0;
 
+    Frustum frustum = make_frustum(cull_cam);
+
     // cell player's eyes are in
     int centre_x = (int)floor(cull_cam.position.x);
     int centre_y = (int)floor(cull_cam.position.y);
@@ -559,6 +670,13 @@ void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const
             {
                 // empty cell, nothing to draw
                 if (get_block(world, x, y, z) == AIR)
+                {
+                    continue;
+                }
+
+                // whole block is outside the player's view, so skip it before
+                // building its corners, testing its faces, or adding to the sort
+                if (!block_in_frustum(frustum, x, y, z))
                 {
                     continue;
                 }

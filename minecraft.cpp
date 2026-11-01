@@ -8,7 +8,7 @@ int main()
     open_window("poopcraft", WINDOWED_WIDTH, WINDOWED_HEIGHT);
 
     Camera cam;
-    
+
     // spawn above the middle of the world (and the superflat, which is centred
     // there): the world goes 0 to 511, so 256.5 is the centre of cell 256.
     // surface is at y = 5 and the eyes are 1.5 above the feet, so 7 drops you 0.5 onto the grass
@@ -22,7 +22,7 @@ int main()
     static World world;
 
     // build superflat world
-    const int SUPERFLAT_SIZE = 20;
+    const int SUPERFLAT_SIZE = 100;
     build_superflat(world, SUPERFLAT_SIZE);
 
     bool is_cursor_locked = true;
