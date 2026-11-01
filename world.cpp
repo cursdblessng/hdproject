@@ -18,12 +18,22 @@ const double REACH = 5.0;
  */
 const double RAY_NEVER = 1e30;
 
-// terrain shape, heights come out between around 25 and 53
-const int TERRAIN_BASE_HEIGHT = 40;      // average surface level
-const double TERRAIN_HILL_HEIGHT = 24.0; // how far hills can go above the base
-const double TERRAIN_SCALE = 96.0;       // how wide the biggest hills are
-const int TERRAIN_OCTAVES = 4;           // layers of detail
-const int DIRT_DEPTH = 3;                // dirt blocks under the top grass layer
+// terrain shape
+const int TERRAIN_BASE_HEIGHT = 40;    // ground level of the flat areas
+const double PLAINS_HEIGHT = 12.0;     // gentle hills everywhere go this far up/down
+const double PLAINS_SCALE = 96.0;      // roughly how wide (in blocks) those hills are
+const double MOUNTAIN_HEIGHT = 60.0;   // the highest a mountain can rise above the plains
+const double MOUNTAIN_SCALE = 64.0;    // how far apart the mountain ridges are
+const double MOUNTAIN_SHARPNESS = 3.0; // power on the ridges: higher = narrower, steeper peaks
+const double REGION_SCALE = 256.0;     // size of the areas that are flat vs mountainous
+const int TERRAIN_OCTAVES = 4;         // layers of detail, see fractal_noise
+const int DIRT_DEPTH = 3;              // dirt blocks under the grass, stone below that
+const double CLIFF_SLOPE = 2.5;        // slopes this steep or more are bare stone, lower = more stone
+
+// noise is higher for more extreme biomes
+const int NOISE_LAYER_PLAINS = 0;
+const int NOISE_LAYER_REGIONS = 1;
+const int NOISE_LAYER_MOUNTAINS = 2;
 
 // picks display color for blocks
 color block_colour(BlockType type)
@@ -155,50 +165,109 @@ void build_superflat(World &world, int size)
 }
 
 /**
- * how high the ground is at a column x,z aka the y level of the higher most block
- * one layer of noise gives boring terrain so the noise is added in octaves
- * each octave is twice as detailed but half as strong
- * octave 1: big mountains, 2: smaller, 3: smaller
- *
- * frequency: noise has a "grid point" every 1 unit of its input, so x / 96
- * means a new grid point every 96 blocks, which is how wide the biggest hills are.
- *
- * seeds: stb only uses the lowest 8 bits of its seed (256 worlds). the noise is 3D,
- * but terrain only needs 2D, so the next 8 bits of the seed choose which flat slice
- * of the 3D noise to read (the y input). that gives 65,536 different worlds.
- * + 0.5 so the slice sits between grid points, where the noise is most varied.
- *
- * wrap 0, 0, 0 = "don't care". stb's noise repeats every 256 input units, but even
- * the most detailed octave only covers about 43 units across the 512 block world,
- * so you never see it repeat
+ * one layer of 2d noise around -1 to 1
  */
-int terrain_height(int x, int z, unsigned int seed)
+float noise_2d(double x, double z, double frequency, unsigned int seed, int layer)
 {
-    float slice = (float)((seed >> 8) & 255) + 0.5f;
-    int stb_seed = (int)(seed & 255);
+    int slice = ((int)((seed >> 8) & 255) + layer * 85) & 255;
 
+    return stb_perlin_noise3_seed((float)(x * frequency), (float)slice + 0.5f, (float)(z * frequency),
+                                  0, 0, 0, (int)(seed & 255));
+}
+
+/**
+ * noise added up in octaves
+ * each octave has more detail than the last
+ * but amplitude is half
+ * scale is how wide the shapes are
+ */
+double fractal_noise(int x, int z, double scale, unsigned int seed, int layer)
+{
     double total = 0.0;
-    double max_total = 0.0; // the biggest total could be
-    double frequency = 1.0 / TERRAIN_SCALE;
+    double max_total = 0.0; // biggest total could be
+    double frequency = 1.0 / scale;
     double amplitude = 1.0;
 
     for (int i = 0; i < TERRAIN_OCTAVES; i++)
     {
-        // noise is roughly -1 to 1
-        float noise = stb_perlin_noise3_seed((float)(x * frequency), slice, (float)(z * frequency), 0, 0, 0, stb_seed);
-
-        total += noise * amplitude;
+        total += noise_2d(x, z, frequency, seed, layer) * amplitude;
         max_total += amplitude;
 
         frequency *= 2.0;
         amplitude *= 0.5;
     }
 
-    // back to about -1..1, then to blocks above/below the base height.
-    // floor, not (int): (int) rounds towards 0, so everything from -0.99 to 0.99
-    // would become 0, making a flat band twice as wide at the base height
-    double n = total / max_total;
-    return TERRAIN_BASE_HEIGHT + (int)floor(n * TERRAIN_HILL_HEIGHT);
+    return total / max_total;
+}
+
+// keeps a number between 0 and 1
+double clamp_01(double value)
+{
+    if (value < 0.0)
+    {
+        return 0.0;
+    }
+    if (value > 1.0)
+    {
+        return 1.0;
+    }
+    return value;
+}
+
+/**
+ * how high the ground is at a column x,z before rounding to a whole block
+ * plains everywhere, with mountains added on top in mountainous regions
+ * exact heights change smoothly so the slope check uses these
+ */
+double terrain_height_exact(int x, int z, unsigned int seed)
+{
+    double plains = fractal_noise(x, z, PLAINS_SCALE, seed, NOISE_LAYER_PLAINS);
+
+    /**
+     * region noise is mostly between -0.5 and 0.5
+     * so after *2, lots of areas reach 0 or 1 (flat or mountains) after clamping
+     * +0.3 makes mountains more common
+     * then smoothstep eases in and out so terrain transitions smoothly
+     */
+    double region = noise_2d(x, z, 1.0 / REGION_SCALE, seed, NOISE_LAYER_REGIONS);
+    double mountain_amount = clamp_01(region * 2.0 + 0.3);
+    mountain_amount = mountain_amount * mountain_amount * (3.0 - 2.0 * mountain_amount);
+
+    /**
+     * ridges: noise crosses 0 along wiggly lines. |noise| is 0 there with a sharp V shape,
+     * so 1 - |noise| is 1 (a peak) along those lines. the power keeps peaks at 1 but
+     * shrinks everything else (0.5^3 = 0.125), giving narrow ridges with steep sides
+     */
+    double ridge = 1.0 - fabs(fractal_noise(x, z, MOUNTAIN_SCALE, seed, NOISE_LAYER_MOUNTAINS));
+    ridge = pow(ridge, MOUNTAIN_SHARPNESS);
+
+    return TERRAIN_BASE_HEIGHT + plains * PLAINS_HEIGHT + mountain_amount * ridge * MOUNTAIN_HEIGHT;
+}
+
+/**
+ * the y of the top block in column x,z
+ * exact height rounded down to a whole block
+ * floor so it always rounds down, int alone would round towards 0
+ */
+int terrain_height(int x, int z, unsigned int seed)
+{
+    return (int)floor(terrain_height_exact(x, z, seed));
+}
+
+/**
+ * how steep the ground is at column x,z, in blocks of height per block across
+ * uses exact heights so columns on the same slope get almost the same value,
+ * rounded heights step 2, 3, 2, 3 down a slope and would only turn every other column to stone
+ * compares the neighbours on both sides of each axis, which are 2 blocks apart so halved
+ * pythagoras combines the x and z slopes into the slope in the steepest direction
+ * uses terrain height not world because neighbour columns may not be built yet
+ */
+double terrain_slope(int x, int z, unsigned int seed)
+{
+    double slope_x = (terrain_height_exact(x + 1, z, seed) - terrain_height_exact(x - 1, z, seed)) / 2.0;
+    double slope_z = (terrain_height_exact(x, z + 1, seed) - terrain_height_exact(x, z - 1, seed)) / 2.0;
+
+    return sqrt(slope_x * slope_x + slope_z * slope_z);
 }
 
 /**
@@ -216,10 +285,19 @@ void build_terrain(World &world, unsigned int seed)
             // one noise lookup per column, not per block
             int surface = terrain_height(x, z, seed);
 
+            // worked out once per column, not per block
+            // steep enough that grass and dirt couldnt stay on it
+            bool is_cliff = terrain_slope(x, z, seed) >= CLIFF_SLOPE;
+
             for (int y = 0; y <= surface; y++)
             {
                 BlockType type;
-                if (y == surface)
+                if (is_cliff)
+                {
+                    // whole column, so the cliff face shows no dirt layers either
+                    type = STONE;
+                }
+                else if (y == surface)
                 {
                     type = GRASS;
                 }
@@ -239,7 +317,7 @@ void build_terrain(World &world, unsigned int seed)
 }
 
 /**
- * 
+ *
  */
 int surface_y(const World &world, int x, int z)
 {
