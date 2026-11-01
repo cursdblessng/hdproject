@@ -482,7 +482,7 @@ Vector3 face_centre(const CubeCorners &c, int face)
 }
 
 /**
- * BACK FACE CULLING:
+ * back face culling
  * a face is only visible if the camera is on the same side its pointing towards
  * the dot product of the normal and the face-to-camera direction
  * is positive only when they point the same way, meaning face is facing camera
@@ -499,6 +499,24 @@ bool is_face_visible(const Camera &cam, const CubeCorners &c, int face)
     double dot = to_cam_x * normal.x + to_cam_y * normal.y + to_cam_z * normal.z;
 
     return dot > 0;
+}
+
+/**
+ * hidden face culling
+ * a face is hidden if its in between two blocks
+ * this is decided if the cell it points into holds a block
+ * because that block covers the face so it will be unrendered
+ */
+bool is_face_hidden(const World &world, int x, int y, int z, int face)
+{
+    Vector3 normal = FACE_NORMALS[face];
+
+    // normals are only ever 0 1 or -1
+    int neighbour_x = x + (int)normal.x;
+    int neighbour_y = y + (int)normal.y;
+    int neighbour_z = z + (int)normal.z;
+
+    return get_block(world, neighbour_x, neighbour_y, neighbour_z) != AIR;
 }
 
 /**
@@ -549,6 +567,12 @@ void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const
 
                 for (int f = 0; f < NUM_FACES; f++)
                 {
+                    // checked before back face culling because its only one array lookup
+                    if (is_face_hidden(world, x, y, z, f))
+                    {
+                        continue;
+                    }
+
                     if (is_face_visible(cull_cam, c, f))
                     {
                         // list full, so stop adding
