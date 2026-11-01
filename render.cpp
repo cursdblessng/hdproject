@@ -64,7 +64,7 @@ struct FaceRef
 const int MAX_VISIBLE_FACES = 10000;
 
 // how many blocks out are rendered around the player
-const int RENDER_DISTANCE = 60;
+const int RENDER_DISTANCE = 32;
 
 // distance from a block's centre to its furthest corner, half of the cube's
 // diagonal: sqrt(0.5² + 0.5² + 0.5²) = sqrt(3) / 2, about 0.866.

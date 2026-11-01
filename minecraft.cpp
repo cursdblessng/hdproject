@@ -7,23 +7,32 @@ int main()
 {
     open_window("poopcraft", WINDOWED_WIDTH, WINDOWED_HEIGHT);
 
-    Camera cam;
-
-    // spawn above the middle of the world (and the superflat, which is centred
-    // there): the world goes 0 to 511, so 256.5 is the centre of cell 256.
-    // surface is at y = 5 and the eyes are 1.5 above the feet, so 7 drops you 0.5 onto the grass
-    cam.position = {256.5, 7.0, 256.5};
-    cam.yaw = 0.0;
-    cam.pitch = 0.0;
-    cam.fov = 2.0;
-
     // the entire world
     // not stored on the 1mb stack
     static World world;
 
-    // build superflat world
+    // which world to make. constants for now, later the menu will choose
+    // the type and the seed, and saving will store them
+    const bool USE_SUPERFLAT = false;
     const int SUPERFLAT_SIZE = 100;
-    build_superflat(world, SUPERFLAT_SIZE);
+    const unsigned int WORLD_SEED = 12345;
+
+    if (USE_SUPERFLAT)
+    {
+        build_superflat(world, SUPERFLAT_SIZE);
+    }
+    else
+    {
+        build_terrain(world, WORLD_SEED);
+    }
+
+    Camera cam;
+
+    int spawn_ground = surface_y(world, 256, 256);
+    cam.position = {256.5, spawn_ground + 2.0, 256.5};
+    cam.yaw = 0.0;
+    cam.pitch = 0.0;
+    cam.fov = 2.0;
 
     bool is_cursor_locked = true;
 
@@ -119,7 +128,6 @@ int main()
         draw_fps_counter(fps_counter);
 
         refresh_screen(TARGET_FPS);
-
     }
 
     close_window("poopcraft");

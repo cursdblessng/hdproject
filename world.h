@@ -131,6 +131,13 @@ CubeCorners get_block_corners(int x, int y, int z);
 // 1 grass, 2 dirt, 2 stone
 void build_superflat(World &world, int size);
 
+// fills the whole world with perlin noise hills from a seed:
+// stone, then dirt, then grass on top. same seed = same world
+void build_terrain(World &world, unsigned int seed);
+
+// first empty cell above the highest block in a column, used for spawning
+int surface_y(const World &world, int x, int z);
+
 // do two boxes overlap
 bool boxes_overlap(const Box &a, const Box &b);
 

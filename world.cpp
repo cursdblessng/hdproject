@@ -1,6 +1,12 @@
 #include "world.h"
 #include <cmath>
 
+// stb_perlin is a one-file library: normally the header only declares its functions.
+// defining this first makes it include the actual code as well.
+// must be in exactly ONE .cpp file, otherwise the functions exist twice and linking fails
+#define STB_PERLIN_IMPLEMENTATION
+#include "stb_perlin.h"
+
 // how far away you can reach to break a block
 const double REACH = 5.0;
 
@@ -11,6 +17,13 @@ const double REACH = 5.0;
  * used instead of dividing by 0
  */
 const double RAY_NEVER = 1e30;
+
+// terrain shape, heights come out between around 25 and 53
+const int TERRAIN_BASE_HEIGHT = 40;      // average surface level
+const double TERRAIN_HILL_HEIGHT = 24.0; // how far hills can go above the base
+const double TERRAIN_SCALE = 96.0;       // how wide the biggest hills are
+const int TERRAIN_OCTAVES = 4;           // layers of detail
+const int DIRT_DEPTH = 3;                // dirt blocks under the top grass layer
 
 // picks display color for blocks
 color block_colour(BlockType type)
@@ -139,6 +152,106 @@ void build_superflat(World &world, int size)
             }
         }
     }
+}
+
+/**
+ * how high the ground is at a column x,z aka the y level of the higher most block
+ * one layer of noise gives boring terrain so the noise is added in octaves
+ * each octave is twice as detailed but half as strong
+ * octave 1: big mountains, 2: smaller, 3: smaller
+ *
+ * frequency: noise has a "grid point" every 1 unit of its input, so x / 96
+ * means a new grid point every 96 blocks, which is how wide the biggest hills are.
+ *
+ * seeds: stb only uses the lowest 8 bits of its seed (256 worlds). the noise is 3D,
+ * but terrain only needs 2D, so the next 8 bits of the seed choose which flat slice
+ * of the 3D noise to read (the y input). that gives 65,536 different worlds.
+ * + 0.5 so the slice sits between grid points, where the noise is most varied.
+ *
+ * wrap 0, 0, 0 = "don't care". stb's noise repeats every 256 input units, but even
+ * the most detailed octave only covers about 43 units across the 512 block world,
+ * so you never see it repeat
+ */
+int terrain_height(int x, int z, unsigned int seed)
+{
+    float slice = (float)((seed >> 8) & 255) + 0.5f;
+    int stb_seed = (int)(seed & 255);
+
+    double total = 0.0;
+    double max_total = 0.0; // the biggest total could be
+    double frequency = 1.0 / TERRAIN_SCALE;
+    double amplitude = 1.0;
+
+    for (int i = 0; i < TERRAIN_OCTAVES; i++)
+    {
+        // noise is roughly -1 to 1
+        float noise = stb_perlin_noise3_seed((float)(x * frequency), slice, (float)(z * frequency), 0, 0, 0, stb_seed);
+
+        total += noise * amplitude;
+        max_total += amplitude;
+
+        frequency *= 2.0;
+        amplitude *= 0.5;
+    }
+
+    // back to about -1..1, then to blocks above/below the base height.
+    // floor, not (int): (int) rounds towards 0, so everything from -0.99 to 0.99
+    // would become 0, making a flat band twice as wide at the base height
+    double n = total / max_total;
+    return TERRAIN_BASE_HEIGHT + (int)floor(n * TERRAIN_HILL_HEIGHT);
+}
+
+/**
+ * fills the whole world with the noised terrain
+ * each column from the bottom is stone, then dirt depth, then 1 grass
+ * world starts as all air so only the solid parts need setting
+ * same seed always gives same world
+ */
+void build_terrain(World &world, unsigned int seed)
+{
+    for (int x = 0; x < WORLD_SIZE; x++)
+    {
+        for (int z = 0; z < WORLD_SIZE; z++)
+        {
+            // one noise lookup per column, not per block
+            int surface = terrain_height(x, z, seed);
+
+            for (int y = 0; y <= surface; y++)
+            {
+                BlockType type;
+                if (y == surface)
+                {
+                    type = GRASS;
+                }
+                else if (y >= surface - DIRT_DEPTH)
+                {
+                    type = DIRT;
+                }
+                else
+                {
+                    type = STONE;
+                }
+
+                set_block(world, x, y, z, type);
+            }
+        }
+    }
+}
+
+/**
+ * 
+ */
+int surface_y(const World &world, int x, int z)
+{
+    for (int y = WORLD_HEIGHT - 1; y >= 0; y--)
+    {
+        if (get_block(world, x, y, z) != AIR)
+        {
+            return y + 1;
+        }
+    }
+
+    return 0;
 }
 
 /**
@@ -361,5 +474,5 @@ RayHit raycast_block(const Camera &cam, const World &world)
         }
     }
 
-    return result; // reached REACH without hitting anything, still "nothing found"
+    return result; // reached REACH without hitting anything so result is in nothing found state
 }
