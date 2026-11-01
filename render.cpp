@@ -53,14 +53,16 @@ const int SEE_THROUGH_ALPHA = 128;
  */
 struct FaceRef
 {
-    int block_index; // index into world.data
-    int face;        // 0 to 5, index into FACE_CORNERS
-    double depth;    // squared distance from camera, for sorting
+    int x, y, z;  // coords of the block this face belongs to
+    int face;     // 0 to 5, index into FACE_CORNERS
+    double depth; // squared distance from camera, for sorting
 };
 
-// a cube shows at most 3 faces, but 10000 is plenty for now and keeps
-// the list at 160KB. Windows only gives the stack about 1MB
+// a cube shows at most 3 faces, but 10000 is plenty for now probably
 const int MAX_VISIBLE_FACES = 10000;
+
+// how many blocks out are rendered around the player
+const int RENDER_DISTANCE = 32;
 
 struct FaceList
 {
@@ -285,13 +287,13 @@ bool clip_world_line_to_near_plane(const Camera &cam, Vector3 &start, Vector3 &e
     // same as draw_3d_line: slide the end thats behind the wall to the near plane
     if (!a_in_front)
     {
-        a = near_plane_intersection(a,b);
+        a = near_plane_intersection(a, b);
     }
     if (!b_in_front)
     {
-        b = near_plane_intersection(a,b);
+        b = near_plane_intersection(a, b);
     }
-    
+
     start = camera_to_world(cam, a);
     end = camera_to_world(cam, b);
     return true;
@@ -454,34 +456,6 @@ void draw_grid(const Camera &cam, int grid_radius)
     }
 }
 
-// draws the 12 edges of one block
-void draw_wireframe_block(const Camera &cam, const Block &b)
-{
-    CubeCorners c = get_block_corners(b);
-    color edge_colour = block_colour(b.type);
-
-    // each pass of the loop draws 3 edges, 4 passes so 12 edges
-    for (int i = 0; i < 4; i++)
-    {
-        int next = (i + 1) % 4; // wraps 3 back round to 0 to close the square
-
-        draw_3d_line(cam, c.points[i], c.points[next], edge_colour);         // bottom edge
-        draw_3d_line(cam, c.points[i + 4], c.points[next + 4], edge_colour); // top edge
-        draw_3d_line(cam, c.points[i], c.points[i + 4], edge_colour);        // vertical edge
-    }
-}
-
-void draw_world_wireframe(const Camera &cam, const BlockArray &world)
-{
-    for (int i = 0; i < world.size; i++)
-    {
-        if (world.data[i].is_active)
-        {
-            draw_wireframe_block(cam, world.data[i]);
-        }
-    }
-}
-
 // ============================================================
 // SOLID FACES (culling, painter's algorithm)
 // ============================================================
@@ -550,31 +524,43 @@ color shade_colour(color base, double factor)
 /**
  * fills the list with every face that the camera is facing
  */
-void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const BlockArray &world, FaceList &faces)
+void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const World &world, FaceList &faces)
 {
     faces.size = 0;
 
-    for (int i = 0; i < world.size; i++)
+    // cell player's eyes are in
+    int centre_x = (int)floor(cull_cam.position.x);
+    int centre_y = (int)floor(cull_cam.position.y);
+    int centre_z = (int)floor(cull_cam.position.z);
+
+    for (int x = centre_x - RENDER_DISTANCE; x <= centre_x + RENDER_DISTANCE; x++)
     {
-        if (!world.data[i].is_active)
+        for (int y = centre_y - RENDER_DISTANCE; y <= centre_y + RENDER_DISTANCE; y++)
         {
-            continue;
-        }
-
-        CubeCorners c = get_block_corners(world.data[i]);
-
-        for (int f = 0; f < NUM_FACES; f++)
-        {
-            if (is_face_visible(cull_cam, c, f))
+            for (int z = centre_z - RENDER_DISTANCE; z <= centre_z + RENDER_DISTANCE; z++)
             {
-                // list full, so stop adding.
-                if (faces.size >= MAX_VISIBLE_FACES)
+                // empty cell, nothing to draw
+                if (get_block(world, x, y, z) == AIR)
                 {
-                    return;
+                    continue;
                 }
 
-                faces.data[faces.size] = {i, f, distance_squared(view_cam.position, face_centre(c, f))};
-                faces.size++;
+                CubeCorners c = get_block_corners(x, y, z);
+
+                for (int f = 0; f < NUM_FACES; f++)
+                {
+                    if (is_face_visible(cull_cam, c, f))
+                    {
+                        // list full, so stop adding
+                        if (faces.size >= MAX_VISIBLE_FACES)
+                        {
+                            return;
+                        }
+
+                        faces.data[faces.size] = {x, y, z, f, distance_squared(view_cam.position, face_centre(c, f))};
+                        faces.size++;
+                    }
+                }
             }
         }
     }
@@ -607,9 +593,9 @@ void sort_faces_far_to_close(FaceList &faces)
 
 // projects one face to the screen, cutting off any part behind the near wall
 // see_through draws it at half opacity, so hidden faces behind it show
-void draw_face(const Camera &view_cam, const Camera &cull_cam, const Block &b, int face, bool see_through)
+void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int z, BlockType type, int face, bool see_through)
 {
-    CubeCorners c = get_block_corners(b);
+    CubeCorners c = get_block_corners(x, y, z);
 
     // the face's 4 corners, still in world space
     Polygon world_shape;
@@ -673,7 +659,7 @@ void draw_face(const Camera &view_cam, const Camera &cull_cam, const Block &b, i
         return;
     }
 
-    color fill = shade_colour(block_colour(b.type), FACE_SHADE[face]);
+    color fill = shade_colour(block_colour(type), FACE_SHADE[face]);
 
     // same colour, but with the alpha lowered so faces behind show through
     // works because faces are drawn far to near, so each one
@@ -716,7 +702,7 @@ void draw_face(const Camera &view_cam, const Camera &cull_cam, const Block &b, i
 }
 
 // collect then sort then draw far to near
-void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const BlockArray &world, bool see_through)
+void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const World &world, bool see_through)
 {
     // made fresh every frame because the camera moves, so which faces are are visible and their order changes each frame
     FaceList faces;
@@ -727,7 +713,9 @@ void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const Bloc
     for (int i = 0; i < faces.size; i++)
     {
         FaceRef f = faces.data[i];
-        draw_face(view_cam, cull_cam, world.data[f.block_index], f.face, see_through);
+        // look the type up here: the cell must still hold a block, because
+        // nothing changes the world between collecting and drawing
+        draw_face(view_cam, cull_cam, f.x, f.y, f.z, get_block(world, f.x, f.y, f.z), f.face, see_through);
     }
 }
 

@@ -1,7 +1,8 @@
 // core data types shared by every file, plus building the world
 #pragma once
 
-#include "splashkit.h" // for the color type
+#include "splashkit.h"
+#include <cstdint>
 
 struct Vector3
 {
@@ -16,21 +17,19 @@ struct Vector2
     double y;
 };
 
-enum BlockType
+/**
+ * all block types, air is for empty array slot
+ * new world is all air
+ */
+enum BlockType:uint8_t
 {
+    AIR,
     GRASS,
     DIRT,
     STONE,
     WOOD,
     LEAVES,
     WATER,
-};
-
-struct Block
-{
-    Vector3 position;
-    BlockType type;
-    bool is_active;
 };
 
 struct Camera
@@ -41,7 +40,27 @@ struct Camera
     double fov;
 };
 
-const int MAX_BLOCKS = 10000;
+const int CHUNK_SIZE = 16; // chunk is 16 x 16 blocks
+const int WORLD_HEIGHT = 128; // nothing can be placed after 127
+const int WORLD_CHUNKS = 32; // world is 32 x 32 chunks, 1024
+const int WORLD_SIZE = CHUNK_SIZE * WORLD_CHUNKS; // 512 blocks x 512 blocks
+
+/**
+ * 1 chunk is 16 x 128 x 16 blocks
+ * blocks[x][y][z]
+ */
+struct Chunk
+{
+    BlockType blocks[CHUNK_SIZE][WORLD_HEIGHT][CHUNK_SIZE];
+};
+
+/**
+ * 32 x 32 chunks
+ */
+struct World
+{
+    Chunk chunks[WORLD_CHUNKS][WORLD_CHUNKS];
+};
 
 // the grid is at y = 0, treat it as solid ground: you stand on it and
 // can place blocks on it. used by collision (input.cpp) and the raycast (world.cpp)
@@ -56,12 +75,6 @@ const int WINDOWED_HEIGHT = 600;
 // 0 = no cap, for measuring how fast the renderer really is.
 // note: movement is per frame, so with no cap the game runs too fast
 const unsigned int TARGET_FPS = 60;
-
-struct BlockArray
-{
-    Block data[MAX_BLOCKS];
-    int size;
-};
 
 /**
  * the corners of a cube, in a struct so it can be
@@ -93,38 +106,39 @@ struct Box
 // what the crosshair ray found
 struct RayHit
 {
-    int block_index;        // block that was hit, -1 if none (or only the floor was hit)
-    bool can_place;         // true if the ray hit a block or the floor within reach
-    Vector3 place_position; // min corner of the empty cell a new block would go in
+    bool hit_block; // true if block is hit
+    int block_x, block_y, block_z; // coords of hit block
+    bool can_place; // true if ray hit a block within reach
+    int place_x, place_y, place_z; // empty coords the placed block will go to
 };
-
-// empties the block array so blocks can be added from index 0
-void init_block_array(BlockArray &arr);
-
-// adds a block to the end of the array, if there's room
-void add_block(BlockArray &arr, Block b);
 
 // picks display color for blocks
 color block_colour(BlockType type);
 
-// works out the 8 corner positions of a block
-CubeCorners get_block_corners(const Block &b);
+// checks if given coordinates are in any world arrays
+bool in_world(int x, int y, int z);
 
-// fills the world with the hand placed test blocks
-void build_test_world(BlockArray &world);
+// returns block type at given coordinates
+BlockType get_block(const World &world, int x, int y, int z);
+
+// sets a block type at given coordinates
+void set_block(World &world, int x, int y, int z, BlockType type);
+
+// works out the 8 corner positions of a block
+CubeCorners get_block_corners(int x, int y, int z);
 
 // fills the world with flat square. size x size, 5 blocks down
 // 1 grass, 2 dirt, 2 stone
-void build_superflat(BlockArray &world, int size);
+void build_superflat(World &world, int size);
 
 // do two boxes overlap
 bool boxes_overlap(const Box &a, const Box &b);
 
 // the space a block fills, from its min corner position to min corner + 1
-Box block_box(const Block &b);
+Box block_box(int x, int y, int z);
 
 // does this block overlap any active block? used for player collision
-bool box_hits_world(const Box &box, const BlockArray &world);
+bool box_hits_world(const Box &box, const World &world);
 
 // what the crosshair is pointing at: which block, and where a new block would go
-RayHit raycast_block(const Camera &cam, const BlockArray &world);
+RayHit raycast_block(const Camera &cam, const World &world);

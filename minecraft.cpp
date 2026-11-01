@@ -8,15 +8,18 @@ int main()
     open_window("poopcraft", WINDOWED_WIDTH, WINDOWED_HEIGHT);
 
     Camera cam;
-    // spawn above the middle of the superflat: surface is at y = 5 and the
-    // eyes are 1.5 above the feet, so 7 drops you 0.5 onto the grass
-    cam.position = {0.5, 7.0, 0.5};
+    
+    // spawn above the middle of the world (and the superflat, which is centred
+    // there): the world goes 0 to 511, so 256.5 is the centre of cell 256.
+    // surface is at y = 5 and the eyes are 1.5 above the feet, so 7 drops you 0.5 onto the grass
+    cam.position = {256.5, 7.0, 256.5};
     cam.yaw = 0.0;
     cam.pitch = 0.0;
     cam.fov = 2.0;
 
-    BlockArray world;
-    init_block_array(world);
+    // the entire world
+    // not stored on the 1mb stack
+    static World world;
 
     // build superflat world
     const int SUPERFLAT_SIZE = 20;
@@ -116,6 +119,7 @@ int main()
         draw_fps_counter(fps_counter);
 
         refresh_screen(TARGET_FPS);
+
     }
 
     close_window("poopcraft");

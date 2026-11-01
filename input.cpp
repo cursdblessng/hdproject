@@ -42,7 +42,7 @@ Box player_box(const Vector3 &eye)
  * along it instead of stopping dead
  * also works out whether the player is standing on something
  */
-void move_player(Camera &cam, Player &player, const BlockArray &world, double dx, double dy, double dz)
+void move_player(Camera &cam, Player &player, const World &world, double dx, double dy, double dz)
 {
     // try x: work out where we'd be, only go there if it's not inside a block
     Vector3 next = cam.position;
@@ -95,7 +95,7 @@ void move_player(Camera &cam, Player &player, const BlockArray &world, double dx
 
 // wasd movement relative to where camera is facing
 // works out how much the player WANTS to move. move_player then checks for collision
-void handle_movement(Camera &cam, Player &player, const BlockArray &world)
+void handle_movement(Camera &cam, Player &player, const World &world)
 {
     double move_speed = 0.1;
 
@@ -238,13 +238,12 @@ void handle_fly_toggle(Player &player)
 
 /**
  * left click breaks the block under the crosshair.
- * the block is removed from the array completely (not just made inactive),
- * so its slot can be used again when placing. a dead slot would otherwise
- * stay used up forever, and the array would slowly fill with nothing.
+ * breaking just sets that cell back to air: the grid has a slot for every
+ * cell, so nothing needs removing or moving around like the old array.
  * mouse_clicked (not mouse_down) so one click breaks one block, instead
  * of one block every frame the button is held
  */
-void handle_block_break(const Camera &cam, BlockArray &world)
+void handle_block_break(const Camera &cam, World &world)
 {
     if (mouse_clicked(LEFT_BUTTON))
     {
@@ -252,15 +251,9 @@ void handle_block_break(const Camera &cam, BlockArray &world)
 
         // -1 means nothing to break (missed, or only hit the floor),
         // and isn't a real index, so world.data[-1] would read outside the array
-        if (hit.block_index != -1)
+        if (hit.hit_block)
         {
-            // fill the hole with the last block, then shrink the array by one.
-            // the last slot is now outside 0..size-1 so nothing reads it,
-            // which means a copy is enough, no need for a real swap.
-            // the order of blocks doesn't matter: drawing sorts by distance
-            // and the raycast picks the nearest block, never by index
-            world.data[hit.block_index] = world.data[world.size - 1];
-            world.size--;
+            set_block(world, hit.block_x, hit.block_y, hit.block_z, AIR);
         }
     }
 }
@@ -305,7 +298,7 @@ void handle_block_select(BlockType &selected_block)
  * add_block puts it at index 'size', which is exactly the slot breaking a block freed.
  * so breaking and placing doesnt waste slots in block array.
  */
-void handle_block_place(const Camera &cam, BlockArray &world, BlockType selected_block)
+void handle_block_place(const Camera &cam, World &world, BlockType selected_block)
 {
     if (mouse_clicked(RIGHT_BUTTON))
     {
@@ -317,15 +310,13 @@ void handle_block_place(const Camera &cam, BlockArray &world, BlockType selected
             return;
         }
 
-        Block new_block = {hit.place_position, selected_block, true};
-
-        if (boxes_overlap(block_box(new_block), player_box(cam.position)))
+        if (boxes_overlap(block_box(hit.place_x, hit.place_y, hit.place_z), player_box(cam.position)))
         {
             return;
         }
 
         // passed both checks, so place the block in the world
-        add_block(world, new_block);
+        set_block(world, hit.place_x, hit.place_y, hit.place_z, selected_block);
     }
 }
 

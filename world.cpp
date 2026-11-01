@@ -7,24 +7,6 @@ const double REACH = 5.0;
 // how far the ray moves each check. smaller means more accurate but slower
 const double RAY_STEP = 0.05;
 
-void init_block_array(BlockArray &arr)
-{
-    arr.size = 0;
-}
-
-void add_block(BlockArray &arr, Block b)
-{
-    if (arr.size < MAX_BLOCKS)
-    {
-        arr.data[arr.size] = b;
-        arr.size++;
-    }
-    else
-    {
-        write_line("Maximum block count reached.");
-    }
-}
-
 // picks display color for blocks
 color block_colour(BlockType type)
 {
@@ -42,55 +24,78 @@ color block_colour(BlockType type)
         return rgb_color(40, 110, 30);
     case WATER:
         return rgb_color(50, 90, 200);
+    case AIR:
+        break; // air not drawn so use fallback
     }
-    return COLOR_WHITE; // fallback (should never happen)
+    return COLOR_WHITE; // fallback
+}
+
+/**
+ * returns bool
+ * is block cell inside the worlds arrays
+ * x & z: 0-511
+ * y: 0-127
+ */
+bool in_world(int x, int y, int z)
+{
+    return x >= 0 && x < WORLD_SIZE &&
+           y >= 0 && y < WORLD_HEIGHT &&
+           z >= 0 && z < WORLD_SIZE;
+}
+
+/**
+ * checks what block is at given coordinates
+ * returns air if theres no block in any world arrays
+ * otherwise returns block type
+ */
+BlockType get_block(const World &world, int x, int y, int z)
+{
+    if (!in_world(x, y, z))
+    {
+        return AIR;
+    }
+
+    return world.chunks[x / CHUNK_SIZE][z / CHUNK_SIZE].blocks[x % CHUNK_SIZE][y][z % CHUNK_SIZE];
+}
+
+/**
+ * puts a block type in the given coordinates
+ * breaking block sets said coordinates as air type
+ */
+void set_block(World &world, int x, int y, int z, BlockType type)
+{
+    if (!in_world(x, y, z))
+    {
+        return;
+    }
+
+    world.chunks[x / CHUNK_SIZE][z / CHUNK_SIZE].blocks[x % CHUNK_SIZE][y][z % CHUNK_SIZE] = type;
 }
 
 // works out the 8 corner positions of a block
-CubeCorners get_block_corners(const Block &b)
+CubeCorners get_block_corners(int x, int y, int z)
 {
     CubeCorners c;
 
-    double x = b.position.x;
-    double y = b.position.y;
-    double z = b.position.z;
+    double fx = x;
+    double fy = y;
+    double fz = z;
 
     // clang-format off
     // bottom face of cube
-    c.points[0] = {x,       y, z};
-    c.points[1] = {x + 1.0, y, z};
-    c.points[2] = {x + 1.0, y, z + 1.0};
-    c.points[3] = {x,       y, z + 1.0};
+    c.points[0] = {fx,       fy, fz};
+    c.points[1] = {fx + 1.0, fy, fz};
+    c.points[2] = {fx + 1.0, fy, fz + 1.0};
+    c.points[3] = {fx,       fy, fz + 1.0};
 
     // top face, y values +1 because its above
-    c.points[4] = {x,       y + 1.0, z};
-    c.points[5] = {x + 1.0, y + 1.0, z};
-    c.points[6] = {x + 1.0, y + 1.0, z + 1.0};
-    c.points[7] = {x,       y + 1.0, z + 1.0};
+    c.points[4] = {fx,       fy + 1.0, fz};
+    c.points[5] = {fx + 1.0, fy + 1.0, fz};
+    c.points[6] = {fx + 1.0, fy + 1.0, fz + 1.0};
+    c.points[7] = {fx,       fy + 1.0, fz + 1.0};
     // clang-format on
 
     return c;
-}
-
-void build_test_world(BlockArray &world)
-{
-    // 5 x 5 patch of grass
-    for (int x = -2; x <= 2; x++)
-    {
-        for (int z = -2; z <= 2; z++)
-        {
-            add_block(world, {{(double)x, 0.0, (double)z}, GRASS, true});
-        }
-    }
-
-    // 3 high wood block with 1 leaf block on top
-    add_block(world, {{4.0, 0.0, 4.0}, WOOD, true});
-    add_block(world, {{4.0, 1.0, 4.0}, WOOD, true});
-    add_block(world, {{4.0, 2.0, 4.0}, WOOD, true});
-    add_block(world, {{4.0, 3.0, 4.0}, LEAVES, true});
-
-    // stone block floating on the sise
-    add_block(world, {{-4.0, 5.0, 3.0}, STONE, true});
 }
 
 /**
@@ -98,11 +103,11 @@ void build_test_world(BlockArray &world)
  * y = 0 to 1: stone. 2 to 3: dirt. 4: grass. surface at y = 5
  * centered around the origin so spawn is 0,0
  */
-void build_superflat(BlockArray &world, int size)
+void build_superflat(World &world, int size)
 {
     // start at -size/2 so the square is centered on 0,
-    // so something like size 20 goes from -10 to 9
-    int start = -size / 2;
+    // so something like size 20 goes from 246 to 265
+    int start = WORLD_SIZE / 2 - size / 2;
 
     for (int x = start; x < start + size; x++)
     {
@@ -125,7 +130,7 @@ void build_superflat(BlockArray &world, int size)
                     type = GRASS;
                 }
 
-                add_block(world, {{(double)x, (double)y, (double)z}, type, true});
+                set_block(world, x, y, z, type);
             }
         }
     }
@@ -146,11 +151,11 @@ bool boxes_overlap(const Box &a, const Box &b)
 }
 
 // the space that a block fills, from its position (min corner) to position + 1
-Box block_box(const Block &b)
+Box block_box(int x, int y, int z)
 {
     Box box;
-    box.min = b.position;
-    box.max = {b.position.x + 1.0, b.position.y + 1.0, b.position.z + 1.0};
+    box.min = {(double)x, (double)y, (double)z};
+    box.max = {x + 1.0, y + 1.0, z + 1.0};
 
     return box;
 }
@@ -159,13 +164,28 @@ Box block_box(const Block &b)
  * does this box overlap any active block in the world?
  * checks every block, stops as soon as one hits
  */
-bool box_hits_world(const Box &box, const BlockArray &world)
+bool box_hits_world(const Box &box, const World &world)
 {
-    for (int i = 0; i < world.size; i++)
+    int min_x = (int)floor(box.min.x);
+    int min_y = (int)floor(box.min.y);
+    int min_z = (int)floor(box.min.z);
+
+    int max_x = (int)ceil(box.max.x) - 1;
+    int max_y = (int)ceil(box.max.y) - 1;
+    int max_z = (int)ceil(box.max.z) - 1;
+
+    for (int x = min_x; x <= max_x; x++)
     {
-        if (world.data[i].is_active && boxes_overlap(box, block_box(world.data[i])))
+        for (int y = min_y; y <= max_y; y++)
         {
-            return true;
+            for (int z = min_z; z <= max_z; z++)
+            {
+                // if its not air then its solid
+                if (get_block(world, x, y, z) != AIR)
+                {
+                    return true;
+                }
+            }
         }
     }
 
@@ -190,29 +210,6 @@ Vector3 look_direction(const Camera &cam)
 }
 
 /**
- * is this point inside a block?
- * the block fills position to position + 1 on every axis.
- * >= at the start and < at the end, so that
- * a point exactly between two blocks counts as inside one only, not both
- */
-bool point_in_block(const Vector3 &p, const Block &b)
-{
-    return p.x >= b.position.x && p.x < b.position.x + 1.0 &&
-           p.y >= b.position.y && p.y < b.position.y + 1.0 &&
-           p.z >= b.position.z && p.z < b.position.z + 1.0;
-}
-
-/**
- * the min corner of the 1x1x1 grid cell this point is in
- * floor (not a plain int cast) because (int)-0.5 is 0.0
- * which is the wrong cell for negative numbers. floor(-0.5) is -1
- */
-Vector3 cell_of(const Vector3 &p)
-{
-    return {floor(p.x), floor(p.y), floor(p.z)};
-}
-
-/**
  * what is the crosshair pointing at?
  * walks from the camera along the look direction in small steps
  * stepping outwards means the first hit is always the nearest block
@@ -221,13 +218,18 @@ Vector3 cell_of(const Vector3 &p)
  * when something is hit, the point is right in front of the face
  * you're looking at, so its cell is where a new block should be placed.
  */
-RayHit raycast_block(const Camera &cam, const BlockArray &world)
+RayHit raycast_block(const Camera &cam, const World &world)
 {
-    // start with 'nothing found', only changed if something is hit
+    // start with 'nothing found' so only changed if something is hit
     RayHit result;
-    result.block_index = -1;
+    result.hit_block = false;
+    result.block_x = 0;
+    result.block_y = 0;
+    result.block_z = 0;
     result.can_place = false;
-    result.place_position = {0.0, 0.0, 0.0};
+    result.place_x = 0;
+    result.place_y = 0;
+    result.place_z = 0;
 
     Vector3 dir = look_direction(cam);
 
@@ -235,9 +237,11 @@ RayHit raycast_block(const Camera &cam, const BlockArray &world)
     // so tiny rounding errors dont build up along the way
     int num_steps = (int)(REACH / RAY_STEP);
 
-    // the last point that wasnt inside anything.
-    // starts at the eye, which can never be inside a block bc collision
-    Vector3 previous = cam.position;
+    // coords of the last cell that wasnt solid
+    // starts at the eye cell which cant be solid cuz collision
+    int prev_x = (int)floor(cam.position.x);
+    int prev_y = (int)floor(cam.position.y);
+    int prev_z = (int)floor(cam.position.z);
 
     for (int s = 0; s <= num_steps; s++)
     {
@@ -251,23 +255,36 @@ RayHit raycast_block(const Camera &cam, const BlockArray &world)
         if (point.y < WORLD_FLOOR_Y)
         {
             result.can_place = true;
-            result.place_position = cell_of(previous);
+            result.place_x = prev_x;
+            result.place_y = prev_y;
+            result.place_z = prev_z;
             return result;
         }
 
-        for (int i = 0; i < world.size; i++)
+        // which cell the point is in
+        int cell_x = (int)floor(point.x);
+        int cell_y = (int)floor(point.y);
+        int cell_z = (int)floor(point.z);
+
+        // one lookup instead of looping over every block
+        if (get_block(world, cell_x, cell_y, cell_z) != AIR)
         {
-            if (world.data[i].is_active && point_in_block(point, world.data[i]))
-            {
-                result.block_index = i;
-                result.can_place = true;
-                result.place_position = cell_of(previous);
-                return result;
-            }
+            result.hit_block = true;
+            result.block_x = cell_x;
+            result.block_y = cell_y;
+            result.block_z = cell_z;
+
+            result.can_place = true;
+            result.place_x = prev_x;
+            result.place_y = prev_y;
+            result.place_z = prev_z;
+            return result;
         }
 
-        // this point was empty, so it becomes the new "last empty point"
-        previous = point;
+        // this cell was empty, so it becomes the new "last empty cell"
+        prev_x = cell_x;
+        prev_y = cell_y;
+        prev_z = cell_z;
     }
 
     return result; // reached REACH without hitting anything, still "nothing found"

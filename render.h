@@ -6,11 +6,8 @@
 // grey ground grid on y = 0, grid_radius lines out from the origin
 void draw_grid(const Camera &cam, int grid_radius);
 
-// every active block as 12 coloured edges (handy for debugging)
-void draw_world_wireframe(const Camera &cam, const BlockArray &world);
-
 // every active block as shaded solid faces (painter's algorithm)
-void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const BlockArray &world, bool see_through);
+void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const World &world, bool see_through);
 
 // frame rate measurement, kept in main because it has to remember
 // things between frames
