@@ -4,8 +4,13 @@
 // how far away you can reach to break a block
 const double REACH = 5.0;
 
-// how far the ray moves each check. smaller means more accurate but slower
-const double RAY_STEP = 0.05;
+/**
+ * stands in for "never" on an axis the ray doesn't move along
+ * (e.g. dir.x = 0 when looking straight down). much bigger than REACH,
+ * so that axis is never picked as the next edge to cross.
+ * used instead of dividing by 0
+ */
+const double RAY_NEVER = 1e30;
 
 // picks display color for blocks
 color block_colour(BlockType type)
@@ -210,13 +215,68 @@ Vector3 look_direction(const Camera &cam)
 }
 
 /**
+ * what the DDA raycast tracks on ONE axis (x, y or z).
+ * the ray uses three of these, and each moves on its own
+ */
+struct RayAxis
+{
+    int cell;       // which cell the ray is in on this axis
+    int step;       // +1 or -1: which way the ray moves on this axis (0 = doesn't move)
+    double t_delta; // distance along the ray to cross one whole cell on this axis
+    double t_max;   // distance along the ray to reach the NEXT cell edge on this axis
+};
+
+/**
+ * sets up one axis from the camera position and look direction on that axis
+ * t_max is the distance to the next edge in this axis, * t_delta to turn it into distance along the ray
+ */
+RayAxis make_ray_axis(double pos, double dir)
+{
+    RayAxis axis;
+    axis.cell = (int)floor(pos);
+
+    if (dir > 0)
+    {
+        // moving up the axis: next edge is the far side of this cell so cell + 1
+        axis.step = 1;
+        axis.t_delta = 1.0 / dir;
+        axis.t_max = (axis.cell + 1 - pos) * axis.t_delta;
+    }
+    else if (dir < 0)
+    {
+        // moving down the axis: next edge is the min side
+        axis.step = -1;
+        axis.t_delta = -1.0 / dir;
+        axis.t_max = (pos - axis.cell) * axis.t_delta;
+    }
+
+    return axis;
+}
+
+/**
+ * crosses the next edge on this axis: moves one cell along it and works out
+ * where the edge after that is (one t_delta further).
+ * returns how far along the ray that edge was, so the raycast can check it against REACH
+ */
+double step_axis(RayAxis &axis)
+{
+    double distance = axis.t_max;
+    axis.cell += axis.step;
+    axis.t_max += axis.t_delta;
+    return distance;
+}
+
+/**
  * what is the crosshair pointing at?
- * walks from the camera along the look direction in small steps
- * stepping outwards means the first hit is always the nearest block
- * so you cant hit a block hidden behind a closer one
- * also remembers the last point that was in empty space:
- * when something is hit, the point is right in front of the face
- * you're looking at, so its cell is where a new block should be placed.
+ * 3D DDA: instead of checking points every small step, the ray jumps straight
+ * to the next cell edge it crosses. each axis counts down to its next edge
+ * (t_max), and whichever edge is closest gets crossed, moving one cell
+ * on that axis only. this means:
+ * - every cell the ray touches is checked, so corners can't be skipped
+ * - each cell shares a FACE with the one before it, so the previous (empty)
+ *   cell is always a valid spot to place a block, never diagonal
+ * cells are visited nearest first, so the first solid one is the block
+ * you're looking at, not one hidden behind it
  */
 RayHit raycast_block(const Camera &cam, const World &world)
 {
@@ -233,26 +293,50 @@ RayHit raycast_block(const Camera &cam, const World &world)
 
     Vector3 dir = look_direction(cam);
 
-    // count steps with an int rather than adding RAY_STEP to a double over and over
-    // so tiny rounding errors dont build up along the way
-    int num_steps = (int)(REACH / RAY_STEP);
+    // one countdown per axis, all starting from the eye's cell
+    RayAxis ax = make_ray_axis(cam.position.x, dir.x);
+    RayAxis ay = make_ray_axis(cam.position.y, dir.y);
+    RayAxis az = make_ray_axis(cam.position.z, dir.z);
 
-    // coords of the last cell that wasnt solid
-    // starts at the eye cell which cant be solid cuz collision
-    int prev_x = (int)floor(cam.position.x);
-    int prev_y = (int)floor(cam.position.y);
-    int prev_z = (int)floor(cam.position.z);
-
-    for (int s = 0; s <= num_steps; s++)
+    /**
+     * this always ends: every t_delta is at least 1 (no part of dir is bigger
+     * than 1), so each crossing pushes one countdown at least 1 further.
+     * after a few crossings even the smallest is past REACH, and it returns
+     */
+    while (true)
     {
-        // dir has length 1, so this point is exactly 'distance' blocks away
-        double distance = s * RAY_STEP;
-        Vector3 point = {cam.position.x + dir.x * distance,
-                         cam.position.y + dir.y * distance,
-                         cam.position.z + dir.z * distance};
+        // the cell the ray is about to leave. it was checked last loop and was
+        // empty (or it's the eye cell, which collision keeps empty), and it
+        // shares a face with the next cell, so it's where a block would go
+        int prev_x = ax.cell;
+        int prev_y = ay.cell;
+        int prev_z = az.cell;
 
-        // went through the floor: nothing to break, but a block can go on it
-        if (point.y < WORLD_FLOOR_Y)
+        // cross whichever edge comes first along the ray.
+        // <= so a tie (ray exactly through an edge or corner) still picks one,
+        // either is fine since both cells touch the ray there
+        double distance;
+        if (ax.t_max <= ay.t_max && ax.t_max <= az.t_max)
+        {
+            distance = step_axis(ax);
+        }
+        else if (ay.t_max <= az.t_max)
+        {
+            distance = step_axis(ay);
+        }
+        else
+        {
+            distance = step_axis(az);
+        }
+
+        // the edge we just crossed is out of reach, so nothing was found
+        if (distance > REACH)
+        {
+            return result;
+        }
+
+        // went below the grid: nothing to break, but a block can go on it
+        if (ay.cell < WORLD_FLOOR_Y)
         {
             result.can_place = true;
             result.place_x = prev_x;
@@ -261,18 +345,13 @@ RayHit raycast_block(const Camera &cam, const World &world)
             return result;
         }
 
-        // which cell the point is in
-        int cell_x = (int)floor(point.x);
-        int cell_y = (int)floor(point.y);
-        int cell_z = (int)floor(point.z);
-
-        // one lookup instead of looping over every block
-        if (get_block(world, cell_x, cell_y, cell_z) != AIR)
+        // one lookup for the cell the ray just entered
+        if (get_block(world, ax.cell, ay.cell, az.cell) != AIR)
         {
             result.hit_block = true;
-            result.block_x = cell_x;
-            result.block_y = cell_y;
-            result.block_z = cell_z;
+            result.block_x = ax.cell;
+            result.block_y = ay.cell;
+            result.block_z = az.cell;
 
             result.can_place = true;
             result.place_x = prev_x;
@@ -280,11 +359,6 @@ RayHit raycast_block(const Camera &cam, const World &world)
             result.place_z = prev_z;
             return result;
         }
-
-        // this cell was empty, so it becomes the new "last empty cell"
-        prev_x = cell_x;
-        prev_y = cell_y;
-        prev_z = cell_z;
     }
 
     return result; // reached REACH without hitting anything, still "nothing found"
