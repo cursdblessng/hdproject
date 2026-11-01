@@ -316,9 +316,6 @@ void build_terrain(World &world, unsigned int seed)
     }
 }
 
-/**
- *
- */
 int surface_y(const World &world, int x, int z)
 {
     for (int y = WORLD_HEIGHT - 1; y >= 0; y--)

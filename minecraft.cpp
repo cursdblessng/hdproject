@@ -5,7 +5,7 @@
 
 int main()
 {
-    open_window("poopcraft", WINDOWED_WIDTH, WINDOWED_HEIGHT);
+    open_window("Voxel Engine", WINDOWED_WIDTH, WINDOWED_HEIGHT);
 
     // the entire world
     // not stored on the 1mb stack
@@ -64,8 +64,13 @@ int main()
 
     double mouse_sensitivity = 0.002;
 
+    // times each part of the frame and prints the averages every second, in timing.cpp
+    FrameTimer frame_timer = make_frame_timer();
+
     while (!quit_requested())
     {
+        start_timed_frame(frame_timer);
+
         process_events();
 
         // inputs
@@ -114,7 +119,7 @@ int main()
         }
 
         draw_grid(view_cam, 20);
-        draw_world_solid(view_cam, cam, world, see_through);
+        draw_world_solid(view_cam, cam, world, see_through, frame_timer);
 
         // crosshair
         fill_circle(COLOR_WHITE, screen_width() / 2.0, screen_height() / 2.0, 2);
@@ -127,9 +132,13 @@ int main()
         update_fps_counter(fps_counter);
         draw_fps_counter(fps_counter);
 
+        double present_start = time_now_ms();
         refresh_screen(TARGET_FPS);
+        add_stage_time(frame_timer, STAGE_PRESENT, present_start);
+
+        end_timed_frame(frame_timer);
     }
 
-    close_window("poopcraft");
+    close_window("Voxel Engine");
     return 0;
 }

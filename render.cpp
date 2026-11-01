@@ -510,10 +510,6 @@ Frustum make_frustum(const Camera &cam)
     f.margin_x = BLOCK_RADIUS * sqrt(1.0 + f.slope_x * f.slope_x);
     f.margin_y = BLOCK_RADIUS * sqrt(1.0 + f.slope_y * f.slope_y);
 
-    // the screen is shorter than it is wide, so the top/bottom edges are
-    // closer to the middle, same slope scaled down by height / width.
-    f.slope_y = f.slope_x * screen_height() / (double)screen_width();
-
     return f;
 }
 
@@ -742,8 +738,11 @@ void sort_faces_far_to_close(FaceList &faces)
 
 // projects one face to the screen, cutting off any part behind the near wall
 // see_through draws it at half opacity, so hidden faces behind it show
-void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int z, BlockType type, int face, bool see_through)
+void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int z, BlockType type, int face, bool see_through, FrameTimer &timer)
 {
+    // everything up to the fill is our own maths, timed as project
+    double project_start = time_now_ms();
+
     CubeCorners c = get_block_corners(x, y, z);
 
     // the face's 4 corners, still in world space
@@ -818,6 +817,10 @@ void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int
         fill = rgba_color(red_of(fill), green_of(fill), blue_of(fill), SEE_THROUGH_ALPHA);
     }
 
+    add_stage_time(timer, STAGE_PROJECT, project_start);
+
+    double fill_start = time_now_ms();
+
     // triangle fan: every triangle shares corner 0
     // starts at 1, starting with 0 would give 0,0,1, a triangle with no area
     for (int i = 1; i < on_screen.size - 1; i++)
@@ -827,6 +830,9 @@ void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int
                       on_screen.points[i].x, on_screen.points[i].y,
                       on_screen.points[i + 1].x, on_screen.points[i + 1].y);
     }
+    add_stage_time(timer, STAGE_FILL, fill_start);
+
+    double outline_start = time_now_ms();
 
     // outline 4 real edges with draw_3d_line which clips them itself
     // outlining the clipped shape would also draw the cut along the near
@@ -848,23 +854,33 @@ void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int
 
         draw_3d_line(view_cam, start, end, outline);
     }
+
+    add_stage_time(timer, STAGE_OUTLINE, outline_start);
 }
 
 // collect then sort then draw far to near
-void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const World &world, bool see_through)
+void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const World &world, bool see_through, FrameTimer &timer)
 {
     // made fresh every frame because the camera moves, so which faces are are visible and their order changes each frame
     FaceList faces;
 
+    double collect_start = time_now_ms();
     collect_visible_faces(view_cam, cull_cam, world, faces);
+    add_stage_time(timer, STAGE_COLLECT, collect_start);
+
+    double sort_start = time_now_ms();
     sort_faces_far_to_close(faces);
-    
+    add_stage_time(timer, STAGE_SORT, sort_start);
+
+    // if this sits at MAX_VISIBLE_FACES, faces are being dropped
+    timer.faces += faces.size;
+
     for (int i = 0; i < faces.size; i++)
     {
         FaceRef f = faces.data[i];
         // look the type up here: the cell must still hold a block, because
         // nothing changes the world between collecting and drawing
-        draw_face(view_cam, cull_cam, f.x, f.y, f.z, get_block(world, f.x, f.y, f.z), f.face, see_through);
+        draw_face(view_cam, cull_cam, f.x, f.y, f.z, get_block(world, f.x, f.y, f.z), f.face, see_through, timer);
     }
 }
 
