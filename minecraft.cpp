@@ -4,6 +4,7 @@
 #include "input.h"
 #include "menu.h"
 #include "save.h"
+#include "settings.h"
 
 int main()
 {
@@ -13,6 +14,12 @@ int main()
     // the entire world
     // not stored on the 1mb stack
     static World world;
+
+    // the player's settings, read from settings.txt or the defaults if there isn't one
+    Settings settings = load_settings();
+
+    // where done on the settings screen goes back to, the main menu or the paused game
+    GameScreen settings_return_screen = SCREEN_MAIN_MENU;
 
     // the worlds you can pick on the world select screen, read from the saves folder
     SaveSlots save_slots = load_save_slots();
@@ -30,9 +37,6 @@ int main()
     // starts in the morning so the first world opens in daylight
     double time_of_day = 0.1;
 
-    // real seconds for a whole day and night. short so it can be shown quickly, settings will change it later
-    double day_length_seconds = 60.0;
-
     // which slot the delete world screen is asking about, set when its delete button is clicked
     int delete_slot = 0;
 
@@ -41,7 +45,7 @@ int main()
     cam.position = {0.0, 0.0, 0.0}; // moved to the spawn when a slot is picked
     cam.yaw = 0.0;
     cam.pitch = 0.0;
-    cam.fov = 2.0;
+    cam.fov = chosen_fov(settings);
 
     // unlocked so the mouse can click the menu
     bool is_cursor_locked = false;
@@ -68,8 +72,6 @@ int main()
     fps_counter.last_update_ticks = current_ticks();
     fps_counter.frames_since_update = 0;
     fps_counter.fps = 0.0;
-
-    double mouse_sensitivity = 0.002;
 
     // times each part of the frame and prints the averages every second, in timing.cpp
     FrameTimer frame_timer = make_frame_timer();
@@ -104,7 +106,7 @@ int main()
         {
             MainMenu menu = make_main_menu();
             draw_main_menu(menu);
-            refresh_screen(TARGET_FPS);
+            refresh_screen(chosen_fps_cap(settings));
 
             MenuChoice choice = main_menu_choice(menu);
 
@@ -116,7 +118,11 @@ int main()
             {
                 break;
             }
-            // MENU_SETTINGS does nothing yet
+            else if (choice == MENU_SETTINGS)
+            {
+                settings_return_screen = SCREEN_MAIN_MENU;
+                screen = SCREEN_SETTINGS;
+            }
 
             // skip the game part of the loop, nothing in the world runs on the menu
             continue;
@@ -126,7 +132,7 @@ int main()
         {
             WorldSelectMenu select_menu = make_world_select_menu(save_slots);
             draw_world_select_menu(select_menu);
-            refresh_screen(TARGET_FPS);
+            refresh_screen(chosen_fps_cap(settings));
 
             WorldSelectChoice select_choice = world_select_choice(select_menu);
 
@@ -170,7 +176,7 @@ int main()
         {
             CreateWorldMenu create_menu = make_create_world_menu(create_form);
             draw_create_world_menu(create_menu, create_form);
-            refresh_screen(TARGET_FPS);
+            refresh_screen(chosen_fps_cap(settings));
 
             CreateChoice create_choice = handle_create_world_menu(create_menu, create_form);
 
@@ -203,7 +209,7 @@ int main()
         {
             DeleteMenu delete_menu = make_delete_menu();
             draw_delete_menu(delete_menu, save_slots.slots[delete_slot].settings.name);
-            refresh_screen(TARGET_FPS);
+            refresh_screen(chosen_fps_cap(settings));
 
             DeleteChoice delete_choice = delete_menu_choice(delete_menu);
 
@@ -224,6 +230,23 @@ int main()
             continue;
         }
 
+        if (screen == SCREEN_SETTINGS)
+        {
+            SettingsMenu settings_menu = make_settings_menu(settings);
+            draw_settings_menu(settings_menu);
+            refresh_screen(chosen_fps_cap(settings));
+
+            if (handle_settings_menu(settings_menu, settings))
+            {
+                // saved once when leaving, instead of on every click
+                save_settings(settings);
+                screen = settings_return_screen;
+            }
+
+            // nothing in the world runs here, even when it was opened from the pause menu
+            continue;
+        }
+
         // inputs
         handle_cursor_toggle(is_cursor_locked);
         handle_fly_toggle(player);
@@ -240,17 +263,17 @@ int main()
         if (is_cursor_locked)
         {
             // time only passes while playing, so pausing stops the sun too
-            advance_time(time_of_day, day_length_seconds, dt);
+            advance_time(time_of_day, chosen_day_length(settings), dt);
 
             if (is_camera_detached)
             {
                 handle_free_fly(debug_cam, dt);
-                handle_mouse_look(debug_cam, mouse_sensitivity);
+                handle_mouse_look(debug_cam, chosen_sensitivity(settings));
             }
             else
             {
                 handle_movement(cam, player, world, dt);
-                handle_mouse_look(cam, mouse_sensitivity);
+                handle_mouse_look(cam, chosen_sensitivity(settings));
 
                 // after mouse look, so the ray uses where you're looking THIS frame
                 handle_block_break(cam, world);
@@ -266,6 +289,13 @@ int main()
             {
                 lock_cursor(is_cursor_locked);
             }
+            else if (pause_choice == PAUSE_SETTINGS)
+            {
+                // back to the pause menu after, the cursor stays unlocked
+                settings_return_screen = SCREEN_PLAYING;
+                screen = SCREEN_SETTINGS;
+                continue;
+            }
             else if (pause_choice == PAUSE_QUIT_TO_TITLE)
             {
                 draw_loading_screen("Saving world...");
@@ -278,6 +308,10 @@ int main()
         }
 
         // drawing
+        // settings can change while paused, so the field of view is taken from them every frame
+        cam.fov = chosen_fov(settings);
+        debug_cam.fov = cam.fov;
+
         // draw from whichever camera is in control, a camera is only a few numbers so calculating it every frame is ok
         Camera view_cam = cam;
         if (is_camera_detached)
@@ -314,10 +348,13 @@ int main()
 
         // last, so it's drawn on top of everything
         update_fps_counter(fps_counter);
-        draw_fps_counter(fps_counter);
+        if (is_fps_shown(settings))
+        {
+            draw_fps_counter(fps_counter);
+        }
 
         double present_start = time_now_ms();
-        refresh_screen(TARGET_FPS);
+        refresh_screen(chosen_fps_cap(settings));
         add_stage_time(frame_timer, STAGE_PRESENT, present_start);
 
         end_timed_frame(frame_timer);

@@ -60,16 +60,17 @@ MainMenu make_main_menu()
     return menu;
 }
 
-// same layout as main menu so buttons sit in the same place
+// starts one button higher than the main menu, so the controls list still fits underneath
 PauseMenu make_pause_menu()
 {
     double centre_x = screen_width() / 2.0;
-    double first_y = screen_height() / 2.0;
     double spacing = BUTTON_HEIGHT + BUTTON_GAP;
+    double first_y = screen_height() / 2.0 - spacing;
 
     PauseMenu menu;
     menu.resume = make_button("Resume", centre_x, first_y);
-    menu.quit_to_title = make_button("Quit to Title", centre_x, first_y + spacing);
+    menu.settings = make_button("Settings", centre_x, first_y + spacing);
+    menu.quit_to_title = make_button("Quit to Title", centre_x, first_y + 2.0 * spacing);
     return menu;
 }
 
@@ -115,6 +116,31 @@ DeleteMenu make_delete_menu()
     DeleteMenu menu;
     menu.confirm = make_button("Delete", centre_x, first_y);
     menu.cancel = make_button("Cancel", centre_x, first_y + spacing);
+    return menu;
+}
+
+/**
+ * one row per setting, its button in the right half and its name drawn to the left.
+ * all the rows plus done are centred top to bottom
+ */
+SettingsMenu make_settings_menu(const Settings &settings)
+{
+    double centre_x = screen_width() / 2.0;
+    double spacing = BUTTON_HEIGHT + BUTTON_GAP;
+
+    // NUM_SETTINGS rows and done, so half of that height above the middle
+    double first_y = screen_height() / 2.0 - (NUM_SETTINGS + 1) * spacing / 2.0;
+
+    // half a gap right of the middle, so the name and button have a gap between them
+    double button_centre_x = centre_x + BUTTON_GAP / 2.0 + BUTTON_WIDTH / 2.0;
+
+    SettingsMenu menu;
+    for (int i = 0; i < NUM_SETTINGS; i++)
+    {
+        menu.options[i] = make_button(option_label(settings, i), button_centre_x, first_y + i * spacing);
+    }
+
+    menu.done = make_button("Done", centre_x, first_y + NUM_SETTINGS * spacing);
     return menu;
 }
 
@@ -234,6 +260,12 @@ bool button_clicked(const Button &button)
     return mouse_clicked(LEFT_BUTTON) && is_mouse_over(button);
 }
 
+// same as button_clicked, for going backwards through settings
+bool button_right_clicked(const Button &button)
+{
+    return mouse_clicked(RIGHT_BUTTON) && is_mouse_over(button);
+}
+
 MenuChoice main_menu_choice(const MainMenu &menu)
 {
     if (button_clicked(menu.play))
@@ -256,6 +288,10 @@ PauseChoice pause_menu_choice(const PauseMenu &menu)
     if (button_clicked(menu.resume))
     {
         return PAUSE_RESUME;
+    }
+    if (button_clicked(menu.settings))
+    {
+        return PAUSE_SETTINGS;
     }
     if (button_clicked(menu.quit_to_title))
     {
@@ -305,6 +341,27 @@ DeleteChoice delete_menu_choice(const DeleteMenu &menu)
         return DELETE_CANCEL;
     }
     return DELETE_NONE;
+}
+
+/**
+ * the settings change straight away, so they're already in use when done is clicked.
+ * main saves them to the file then
+ */
+bool handle_settings_menu(const SettingsMenu &menu, Settings &settings)
+{
+    for (int i = 0; i < NUM_SETTINGS; i++)
+    {
+        if (button_clicked(menu.options[i]))
+        {
+            next_option(settings, i);
+        }
+        else if (button_right_clicked(menu.options[i]))
+        {
+            previous_option(settings, i);
+        }
+    }
+
+    return button_clicked(menu.done);
 }
 
 /**
@@ -541,6 +598,7 @@ void draw_pause_menu(const PauseMenu &menu)
     draw_centred_text("Game Paused", COLOR_WHITE, TITLE_SIZE, screen_width() / 2.0, screen_height() / 4.0);
 
     draw_button(menu.resume);
+    draw_button(menu.settings);
     draw_button(menu.quit_to_title);
 
     // one gap under the last button
@@ -619,6 +677,35 @@ void draw_delete_menu(const DeleteMenu &menu, const string &world_name)
     // red like the X, so it's clear this is the one that deletes
     draw_button_in_colour(menu.confirm, rgb_color(160, 40, 40), rgb_color(210, 60, 60));
     draw_button(menu.cancel);
+}
+
+void draw_settings_menu(const SettingsMenu &menu)
+{
+    clear_screen(COLOR_SKY_BLUE);
+
+    double centre_x = screen_width() / 2.0;
+
+    // above the first row
+    draw_centred_text("Settings", COLOR_WHITE, TITLE_SIZE, centre_x, menu.options[0].area.y - 50.0);
+
+    for (int i = 0; i < NUM_SETTINGS; i++)
+    {
+        string name = setting_name(i);
+        double width = text_width(name, MENU_FONT, BUTTON_TEXT_SIZE);
+        double height = text_height(name, MENU_FONT, BUTTON_TEXT_SIZE);
+
+        // right aligned so every name ends the same gap before its button
+        double name_x = centre_x - BUTTON_GAP / 2.0 - width;
+        double row_centre_y = menu.options[i].area.y + BUTTON_HEIGHT / 2.0;
+        draw_text(name, COLOR_WHITE, MENU_FONT, BUTTON_TEXT_SIZE, name_x, row_centre_y - height / 2.0);
+
+        draw_button(menu.options[i]);
+    }
+
+    draw_button(menu.done);
+
+    // under done, so it's clear the buttons can go both ways
+    draw_centred_text("Click to change, right click to go back", COLOR_WHITE, LABEL_SIZE, centre_x, menu.done.area.y + BUTTON_HEIGHT + 25.0);
 }
 
 void draw_create_world_menu(const CreateWorldMenu &menu, const CreateWorldForm &form)

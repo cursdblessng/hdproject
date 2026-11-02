@@ -3,6 +3,7 @@
 
 #include "world.h"
 #include "input.h" // Player
+#include "settings.h"
 
 // writes the slot's files, replacing whatever was saved there before
 void save_world(int slot, const WorldSettings &settings, const World &world, const Camera &cam, const Player &player);
@@ -16,3 +17,8 @@ void delete_world(int slot);
 
 // which slots have a saved world and what they're called, read when the game opens
 SaveSlots load_save_slots();
+// writes the chosen option for every setting to settings.txt
+void save_settings(const Settings &settings);
+
+// reads settings.txt, anything missing or broken stays on its default
+Settings load_settings();

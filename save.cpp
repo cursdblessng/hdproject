@@ -5,6 +5,9 @@
 // start of every save file name, the files go next to where the game is run from
 const string SAVE_FILE_PREFIX = "save_slot";
 
+// one file for the settings, shared by every world
+const string SETTINGS_FILE = "settings.txt";
+
 // a run's length is stored in one byte, which can't go above 255
 const int MAX_RUN_LENGTH = 255;
 
@@ -204,4 +207,49 @@ SaveSlots load_save_slots()
     }
 
     return save_slots;
+}
+// one number per line, the chosen option for each setting in SettingId order
+void save_settings(const Settings &settings)
+{
+    std::ofstream file(SETTINGS_FILE);
+
+    for (int i = 0; i < NUM_SETTINGS; i++)
+    {
+        file << settings.choice[i] << "\n";
+    }
+}
+
+/**
+ * starts from the defaults and replaces each one that reads in properly.
+ * a setting added later isn't in older files, so reading it fails and it keeps its default.
+ * each number is checked, so a file edited by hand can't pick an option that doesn't exist
+ */
+Settings load_settings()
+{
+    Settings settings = default_settings();
+
+    std::ifstream file(SETTINGS_FILE);
+    if (!file.is_open())
+    {
+        return settings;
+    }
+
+    for (int i = 0; i < NUM_SETTINGS; i++)
+    {
+        int option;
+        file >> option;
+
+        // ran out of numbers, everything after this keeps its default
+        if (file.fail())
+        {
+            return settings;
+        }
+
+        if (is_valid_option(i, option))
+        {
+            settings.choice[i] = option;
+        }
+    }
+
+    return settings;
 }

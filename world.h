@@ -96,11 +96,6 @@ const double WORLD_FLOOR_Y = 0.0;
 const int WINDOWED_WIDTH = 800;
 const int WINDOWED_HEIGHT = 600;
 
-// frame rate cap passed to refresh_screen. 60 for normal play,
-// 0 = no cap, for measuring how fast the renderer really is.
-// note: movement is per frame, so with no cap the game runs too fast
-const unsigned int TARGET_FPS = 60;
-
 /**
  * the corners of a cube, in a struct so it can be
  * returned from functions without using pointers

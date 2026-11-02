@@ -24,3 +24,6 @@ myeasylog.log
 
 # world saves
 save_slot*
+
+# player settings
+settings.txt

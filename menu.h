@@ -4,6 +4,7 @@
 #include "splashkit.h"
 #include "world.h"
 #include "input.h"
+#include "settings.h"
 
 // which screen main is showing, decides what each frame does
 enum GameScreen
@@ -12,6 +13,7 @@ enum GameScreen
     SCREEN_WORLD_SELECT,
     SCREEN_CREATE_WORLD,
     SCREEN_DELETE_WORLD,
+    SCREEN_SETTINGS,
     SCREEN_PLAYING
 };
 
@@ -44,6 +46,7 @@ enum PauseChoice
 {
     PAUSE_NONE,
     PAUSE_RESUME,
+    PAUSE_SETTINGS,
     PAUSE_QUIT_TO_TITLE
 };
 
@@ -51,6 +54,7 @@ enum PauseChoice
 struct PauseMenu
 {
     Button resume;
+    Button settings;
     Button quit_to_title;
 };
 
@@ -194,3 +198,18 @@ void draw_delete_menu(const DeleteMenu &menu, const string &world_name);
 
 // red dot and "DEBUG CAMERA" in the bottom right corner, drawn while the camera is detached
 void draw_debug_cam_label();
+// one button per setting showing its current option, then done
+struct SettingsMenu
+{
+    Button options[NUM_SETTINGS];
+    Button done;
+};
+
+// buttons laid out for the current window size, labelled from the settings
+SettingsMenu make_settings_menu(const Settings &settings);
+
+// left click moves a setting to its next option, right click back. true when done is clicked
+bool handle_settings_menu(const SettingsMenu &menu, Settings &settings);
+
+// title, each setting's name next to its button, and done, over the whole screen
+void draw_settings_menu(const SettingsMenu &menu);
