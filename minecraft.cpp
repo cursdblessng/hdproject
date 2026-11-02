@@ -2,10 +2,12 @@
 #include "world.h"
 #include "render.h"
 #include "input.h"
+#include "menu.h"
 
 int main()
 {
     open_window("Voxel Engine", WINDOWED_WIDTH, WINDOWED_HEIGHT);
+    load_menu_font();
 
     // the entire world
     // not stored on the 1mb stack
@@ -17,23 +19,18 @@ int main()
     const int SUPERFLAT_SIZE = 100;
     const unsigned int WORLD_SEED = 10;
 
-    if (USE_SUPERFLAT)
-    {
-        build_superflat(world, SUPERFLAT_SIZE);
-    }
-    else
-    {
-        build_terrain(world, WORLD_SEED);
-    }
+    // opens on the main menu, the world is built when play is clicked
+    GameScreen screen = SCREEN_MAIN_MENU;
 
     Camera cam;
 
-    cam.position = find_spawn(world);
+    cam.position = {0.0, 0.0, 0.0}; // moved to the spawn when play is clicked
     cam.yaw = 0.0;
     cam.pitch = 0.0;
     cam.fov = 2.0;
 
-    bool is_cursor_locked = true;
+    // unlocked so the mouse can click the menu
+    bool is_cursor_locked = false;
 
     // starts on foot, press f to fly
     Player player;
@@ -57,9 +54,6 @@ int main()
     fps_counter.last_update_ticks = current_ticks();
     fps_counter.frames_since_update = 0;
     fps_counter.fps = 0.0;
-
-    hide_mouse();
-    move_mouse(screen_width() / 2.0, screen_height() / 2.0);
 
     double mouse_sensitivity = 0.002;
 
@@ -89,9 +83,58 @@ int main()
 
         process_events();
 
+        // before the menu so f11 works on every screen
+        handle_fullscreen_toggle(is_cursor_locked);
+
+        if (screen == SCREEN_MAIN_MENU)
+        {
+            MainMenu menu = make_main_menu();
+            draw_main_menu(menu);
+            refresh_screen(TARGET_FPS);
+
+            MenuChoice choice = main_menu_choice(menu);
+
+            if (choice == MENU_PLAY)
+            {
+                // building takes a moment, so show something instead of a frozen menu
+                draw_loading_screen();
+
+                if (USE_SUPERFLAT)
+                {
+                    build_superflat(world, SUPERFLAT_SIZE);
+                }
+                else
+                {
+                    build_terrain(world, WORLD_SEED);
+                }
+
+                cam.position = find_spawn(world);
+
+                // lock the cursor for playing, same as pressing escape in game.
+                // mouse_movement throws away everything the mouse did on the menu,
+                // otherwise the camera spins on the first frame
+                is_cursor_locked = true;
+                hide_mouse();
+                move_mouse(screen_width() / 2.0, screen_height() / 2.0);
+                mouse_movement();
+
+                // building took a while, so time the next frame from now not from before it
+                last_frame_ms = time_now_ms();
+
+                screen = SCREEN_PLAYING;
+            }
+            else if (choice == MENU_EXIT)
+            {
+                break;
+            }
+            // MENU_SETTINGS does nothing yet
+
+            // skip the game part of the loop, nothing in the world runs on the menu
+            continue;
+        }
+
         // inputs
         handle_cursor_toggle(is_cursor_locked);
-        handle_fullscreen_toggle(is_cursor_locked);
         handle_fly_toggle(player);
         handle_see_through_toggle(see_through);
         handle_camera_detach_toggle(is_camera_detached, debug_cam, cam);
