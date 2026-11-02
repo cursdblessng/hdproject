@@ -2,6 +2,8 @@
 #include <fstream> // ofstream, ifstream
 #include <iomanip> // setprecision
 
+// some ideas with saving worlds were AI assisted
+
 // start of every save file name, the files go next to where the game is run from
 const string SAVE_FILE_PREFIX = "save_slot";
 

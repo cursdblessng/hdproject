@@ -4,6 +4,9 @@
 #include "splashkit.h"
 #include <cmath> // floor
 
+// FPS counter was AI Assisted
+// debug camera hud was AI assisted
+
 // how often the fps number is recalculated.
 // averaging over half a second gives a steady number instead of one that flickers every frame
 const unsigned int FPS_UPDATE_MS = 500;
@@ -22,6 +25,7 @@ FpsCounter make_fps_counter()
  * fps = frames / seconds, which is frames * 1000 / milliseconds.
  * 1000.0 (not 1000) so the division is done with decimals,
  * otherwise int division would chop off the fraction
+ * // AI assisted
  */
 void update_fps_counter(FpsCounter &counter)
 {
