@@ -884,3 +884,15 @@ RayHit raycast_block(const Camera &cam, const World &world)
 
     return result; // reached REACH without hitting anything so result is in nothing found state
 }
+/**
+ * moves the time of day on by dt seconds.
+ * dt / day_length is the fraction of a whole day that passed this frame,
+ * e.g. 1/60 of a second in a 60 second day moves it on 1/3600
+ */
+void advance_time(double &time_of_day, double day_length_seconds, double dt)
+{
+    time_of_day += dt / day_length_seconds;
+
+    // fmod keeps only the part after the decimal point, so 1.02 becomes 0.02, early the next day
+    time_of_day = fmod(time_of_day, 1.0);
+}

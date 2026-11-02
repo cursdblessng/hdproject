@@ -26,6 +26,13 @@ int main()
     // what has been typed and picked on the create world screen, reset when an empty slot is clicked
     CreateWorldForm create_form = make_create_world_form(0);
 
+    // how far through the day it is, from 0 to 1: 0 = sunrise, 0.25 = noon, 0.5 = sunset, 0.75 = midnight.
+    // starts in the morning so the first world opens in daylight
+    double time_of_day = 0.1;
+
+    // real seconds for a whole day and night. short so it can be shown quickly, settings will change it later
+    double day_length_seconds = 60.0;
+
     // which slot the delete world screen is asking about, set when its delete button is clicked
     int delete_slot = 0;
 
@@ -232,6 +239,9 @@ int main()
         // player is frozen: no movement, no gravity, no breaking or placing
         if (is_cursor_locked)
         {
+            // time only passes while playing, so pausing stops the sun too
+            advance_time(time_of_day, day_length_seconds, dt);
+
             if (is_camera_detached)
             {
                 handle_free_fly(debug_cam, dt);
@@ -268,8 +278,6 @@ int main()
         }
 
         // drawing
-        clear_screen(COLOR_SKY_BLUE);
-
         // draw from whichever camera is in control, a camera is only a few numbers so calculating it every frame is ok
         Camera view_cam = cam;
         if (is_camera_detached)
@@ -277,7 +285,10 @@ int main()
             view_cam = debug_cam;
         }
 
-        draw_world_solid(view_cam, cam, world, see_through, frame_timer);
+        // first, it clears the screen and the sun and moon go behind everything
+        draw_sky(view_cam, time_of_day);
+
+        draw_world_solid(view_cam, cam, world, see_through, time_of_day, frame_timer);
 
         // after the world so it covers all of it, before the crosshair and hud
         draw_underwater_tint(view_cam, world);

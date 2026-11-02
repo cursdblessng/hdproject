@@ -569,6 +569,139 @@ bool block_in_frustum(const Frustum &f, int x, int y, int z)
 }
 
 // ============================================================
+// SKY (day and night, sun and moon)
+// ============================================================
+
+const double PI = 3.14159265358979323846;
+
+// sky colour at noon and at midnight, everything in between is a mix of the two
+const color DAY_SKY_COLOUR = rgb_color(135, 206, 235);
+const color NIGHT_SKY_COLOUR = rgb_color(10, 12, 30);
+
+// how bright blocks are at midnight compared to noon.
+// not 0, otherwise the world would be pitch black and you couldn't see anything
+const double NIGHT_LIGHT = 0.25;
+
+// how far the sun's height (-1 to 1) goes either side of the horizon while it fades between day and night.
+// 0.25 is about 15 degrees, so with a 60 second day the fade takes about 5 seconds
+const double TWILIGHT = 0.25;
+
+// how far away the sun and moon are drawn, and how big they are at that distance.
+// 8 at 100 away is about 9 degrees across for the sun
+const double SKY_DISTANCE = 100.0;
+const double SUN_RADIUS = 8.0;
+const double MOON_RADIUS = 6.0;
+const color SUN_COLOUR = rgb_color(255, 230, 120);
+const color MOON_COLOUR = rgb_color(220, 220, 235);
+
+/**
+ * which way the sun is, from anywhere in the world. length 1.
+ * goes round in a circle up through east (+x), overhead, then down through west (-x):
+ * 0 = sunrise, 0.25 = noon, 0.5 = sunset, 0.75 = midnight.
+ * cos and sin of the same angle always make a length 1 direction
+ */
+Vector3 sun_direction(double time_of_day)
+{
+    double angle = time_of_day * 2.0 * PI;
+    return {cos(angle), sin(angle), 0.0};
+}
+
+/**
+ * 0 at night, 1 in the day, fading in between while the sun is near the horizon.
+ * the sun's y is its height: 1 at noon, 0 on the horizon, -1 at midnight
+ */
+double daylight_amount(double time_of_day)
+{
+    double sun_height = sun_direction(time_of_day).y;
+
+    // -TWILIGHT -> 0, 0 -> 0.5, +TWILIGHT -> 1
+    double amount = (sun_height + TWILIGHT) / (2.0 * TWILIGHT);
+
+    // outside the fade it would go below 0 or above 1, so keep it in range
+    if (amount < 0.0)
+    {
+        amount = 0.0;
+    }
+    if (amount > 1.0)
+    {
+        amount = 1.0;
+    }
+    return amount;
+}
+
+// how bright block faces are right now, NIGHT_LIGHT at night up to 1 in the day
+double block_light(double time_of_day)
+{
+    return NIGHT_LIGHT + (1.0 - NIGHT_LIGHT) * daylight_amount(time_of_day);
+}
+
+// mixes two colours, amount 0 = all of a, 1 = all of b, 0.5 = halfway between
+color mix_colours(color a, color b, double amount)
+{
+    return rgb_color((int)(red_of(a) + (red_of(b) - red_of(a)) * amount),
+                     (int)(green_of(a) + (green_of(b) - green_of(a)) * amount),
+                     (int)(blue_of(a) + (blue_of(b) - blue_of(a)) * amount));
+}
+
+/**
+ * a circle in the sky in that direction from the camera, for the sun and the moon.
+ * placed SKY_DISTANCE from the camera wherever it goes, so you can never walk
+ * any closer to it, just like something really far away.
+ * drawn before the world, so blocks in front cover it
+ */
+void draw_sky_disc(const Camera &cam, const Vector3 &direction, color colour, double radius)
+{
+    // below the horizon: the ground should be hiding it, but nothing is drawn
+    // past the edge of the render distance, so it would show through
+    if (direction.y < -0.1)
+    {
+        return;
+    }
+
+    Vector3 sky_point = {cam.position.x + direction.x * SKY_DISTANCE,
+                         cam.position.y + direction.y * SKY_DISTANCE,
+                         cam.position.z + direction.z * SKY_DISTANCE};
+
+    Vector3 c = world_to_camera(cam, sky_point);
+
+    // behind the camera
+    if (c.z < NEAR_PLANE)
+    {
+        return;
+    }
+
+    Vector2 centre = camera_to_screen(cam, c);
+
+    // a point radius above the centre, the gap between the two on screen is how big it looks.
+    // the edge is higher up the screen, so its y is smaller
+    Vector2 edge = camera_to_screen(cam, {c.x, c.y + radius, c.z});
+    double screen_radius = centre.y - edge.y;
+
+    // completely off the window. near the side of the view the pixel numbers get huge,
+    // which would overflow splashkit's drawing the same way the faces did
+    if (centre.x < -screen_radius || centre.x > screen_width() + screen_radius ||
+        centre.y < -screen_radius || centre.y > screen_height() + screen_radius)
+    {
+        return;
+    }
+
+    fill_circle(colour, centre.x, centre.y, screen_radius);
+}
+
+void draw_sky(const Camera &cam, double time_of_day)
+{
+    clear_screen(mix_colours(NIGHT_SKY_COLOUR, DAY_SKY_COLOUR, daylight_amount(time_of_day)));
+
+    Vector3 sun = sun_direction(time_of_day);
+
+    // the moon is always on the opposite side of the sky, so it rises as the sun sets
+    Vector3 moon = {-sun.x, -sun.y, -sun.z};
+
+    draw_sky_disc(cam, sun, SUN_COLOUR, SUN_RADIUS);
+    draw_sky_disc(cam, moon, MOON_COLOUR, MOON_RADIUS);
+}
+
+// ============================================================
 // SOLID FACES (culling, painter's algorithm)
 // ============================================================
 
@@ -747,7 +880,7 @@ void sort_faces_far_to_close(FaceList &faces)
 
 // projects one face to the screen, cutting off any part behind the near wall
 // see_through draws it at half opacity, so hidden faces behind it show
-void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int z, BlockType type, int face, bool see_through, FrameTimer &timer)
+void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int z, BlockType type, int face, bool see_through, double light, FrameTimer &timer)
 {
     // everything up to the fill is our own maths, timed as project
     double project_start = time_now_ms();
@@ -816,7 +949,8 @@ void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int
         return;
     }
 
-    color fill = shade_colour(block_colour(type), FACE_SHADE[face]);
+    // light darkens every face the same amount at night, on top of each side's own shade
+    color fill = shade_colour(block_colour(type), FACE_SHADE[face] * light);
 
     // same colour, but with the alpha lowered so faces behind show through
     // works because faces are drawn far to near, so each one
@@ -868,8 +1002,11 @@ void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int
 }
 
 // collect then sort then draw far to near
-void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const World &world, bool see_through, FrameTimer &timer)
+void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const World &world, bool see_through, double time_of_day, FrameTimer &timer)
 {
+    // the same for every face this frame, so it's only worked out once
+    double light = block_light(time_of_day);
+
     // made fresh every frame because the camera moves, so which faces are are visible and their order changes each frame
     FaceList faces;
 
@@ -889,7 +1026,7 @@ void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const Worl
         FaceRef f = faces.data[i];
         // look the type up here: the cell must still hold a block, because
         // nothing changes the world between collecting and drawing
-        draw_face(view_cam, cull_cam, f.x, f.y, f.z, get_block(world, f.x, f.y, f.z), f.face, see_through, timer);
+        draw_face(view_cam, cull_cam, f.x, f.y, f.z, get_block(world, f.x, f.y, f.z), f.face, see_through, light, timer);
     }
 }
 
