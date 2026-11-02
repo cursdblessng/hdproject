@@ -8,6 +8,9 @@
 // so the player doesn't suddenly jump a long way after the game stalls
 const double MAX_FRAME_SECONDS = 0.25;
 
+// the time of day a new world starts at, in the morning so it opens in daylight
+const double START_TIME_OF_DAY = 0.1;
+
 // ============================================================
 // SETTING UP AND EVERY FRAME
 // ============================================================
@@ -42,8 +45,8 @@ Game make_game()
 
     game.selected_block = GRASS;
 
-    // starts in the morning so the first world opens in daylight
-    game.time_of_day = 0.1;
+    // set properly when a world is started, each world has its own
+    game.time_of_day = START_TIME_OF_DAY;
 
     // unlocked so the mouse can click the menu
     game.is_cursor_locked = false;
@@ -83,7 +86,7 @@ double start_frame(Game &game)
 
 void save_current_world(const Game &game, const World &world)
 {
-    save_world(game.current_slot, game.save_slots.slots[game.current_slot].settings, world, game.cam, game.player);
+    save_world(game.current_slot, game.save_slots.slots[game.current_slot].settings, world, game.cam, game.player, game.time_of_day);
 }
 
 /**
@@ -99,7 +102,11 @@ void start_world(Game &game, World &world, int slot)
     // loading takes a moment, so show something instead of a frozen menu
     draw_loading_screen("Loading world...");
 
-    if (!load_world(slot, world, game.cam, game.player))
+    // the time from the last world played would carry over otherwise.
+    // a saved world puts its own time back while loading, a new world keeps this
+    game.time_of_day = START_TIME_OF_DAY;
+
+    if (!load_world(slot, world, game.cam, game.player, game.time_of_day))
     {
         draw_loading_screen("Generating world...");
 

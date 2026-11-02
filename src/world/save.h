@@ -1,4 +1,4 @@
-// saving and loading: each world slot is a .txt (settings and player) and a .bin (blocks),
+// saving and loading: each world slot is a .txt (settings, player and time of day) and a .bin (blocks),
 // and the player's settings go in settings.txt
 #pragma once
 
@@ -7,11 +7,11 @@
 #include "../game/settings.h"
 
 // writes the slot's files, replacing whatever was saved there before
-void save_world(int slot, const WorldSettings &settings, const World &world, const Camera &cam, const Player &player);
+void save_world(int slot, const WorldSettings &settings, const World &world, const Camera &cam, const Player &player, double time_of_day);
 
-// reads the slot's blocks, position and look direction back in.
+// reads the slot's blocks, position, look direction and time of day back in.
 // false if the files are missing or damaged
-bool load_world(int slot, World &world, Camera &cam, Player &player);
+bool load_world(int slot, World &world, Camera &cam, Player &player, double &time_of_day);
 
 // empties the slot so it shows as an empty slot and a new world can be made in it
 void delete_world(int slot);

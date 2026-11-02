@@ -45,7 +45,7 @@ struct Game
     Camera cam;               // the player's eyes
     Player player;
     BlockType selected_block; // which block right click places, changed with keys 1-7
-    double time_of_day;       // 0 to 1: 0 = sunrise, 0.25 = noon, 0.5 = sunset, 0.75 = midnight
+    double time_of_day;       // 0 to 1: 0 = sunrise, 0.25 = noon, 0.5 = sunset, 0.75 = midnight. saved with each world
     bool is_cursor_locked;    // locked = playing, unlocked = paused or on a menu
 
     // debug views

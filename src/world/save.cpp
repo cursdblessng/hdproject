@@ -130,9 +130,10 @@ bool read_settings(std::ifstream &file, WorldSettings &settings)
 
 /**
  * blocks first, so the .txt that marks the slot as used only changes once the blocks are written.
- * velocity and on_ground aren't saved, the player just drops back onto the ground on load
+ * velocity and on_ground aren't saved, the player just drops back onto the ground on load.
+ * the time of day is saved too, so each world keeps its own day and night
  */
-void save_world(int slot, const WorldSettings &settings, const World &world, const Camera &cam, const Player &player)
+void save_world(int slot, const WorldSettings &settings, const World &world, const Camera &cam, const Player &player, double time_of_day)
 {
     save_blocks(slot_path(slot, ".bin"), world);
 
@@ -148,13 +149,14 @@ void save_world(int slot, const WorldSettings &settings, const World &world, con
     file << cam.position.x << " " << cam.position.y << " " << cam.position.z << "\n";
     file << cam.yaw << " " << cam.pitch << "\n";
     file << player.is_flying << "\n";
+    file << time_of_day << "\n";
 }
 
 /**
  * reads the .txt in the same order save_world wrote it, then the blocks.
  * false if either file is missing or something couldn't be read
  */
-bool load_world(int slot, World &world, Camera &cam, Player &player)
+bool load_world(int slot, World &world, Camera &cam, Player &player, double &time_of_day)
 {
     std::ifstream file(slot_path(slot, ".txt"));
     if (!file.is_open())
@@ -173,6 +175,16 @@ bool load_world(int slot, World &world, Camera &cam, Player &player)
     if (file.fail())
     {
         return false;
+    }
+
+    // checked on its own after the rest: saves made before the time was saved don't have it,
+    // so reading it fails and time_of_day keeps whatever it was set to before loading,
+    // instead of the whole save counting as broken
+    double saved_time;
+    file >> saved_time;
+    if (!file.fail())
+    {
+        time_of_day = saved_time;
     }
 
     return load_blocks(slot_path(slot, ".bin"), world);
