@@ -1,4 +1,5 @@
 #include "menu.h"
+#include "save.h"
 
 // name the font is loaded under, used instead of keeping the font itself
 const string MENU_FONT = "menu_font";
@@ -490,30 +491,41 @@ void draw_create_world_menu(const CreateWorldMenu &menu, const CreateWorldForm &
  * refreshes the screen itself because building the world straight after
  * stops the loop, so main never gets to refresh until it's done
  */
-void draw_loading_screen()
+void draw_loading_screen(const string &message)
 {
     clear_screen(COLOR_SKY_BLUE);
-    draw_centred_text("Generating world...", COLOR_WHITE, BUTTON_TEXT_SIZE, screen_width() / 2.0, screen_height() / 2.0);
+    draw_centred_text(message, COLOR_WHITE, BUTTON_TEXT_SIZE, screen_width() / 2.0, screen_height() / 2.0);
     refresh_screen();
 }
 
 /**
- * the same for a new world or an existing one.
- * everything is reset so nothing carries over from the last world played
+ * opens the slot's save if it has one. if not, builds a new world from the settings
+ * and saves it straight away, so the slot has files from the start.
+ * a damaged save is rebuilt from its settings too, so the world still opens.
+ * everything else is reset so nothing carries over from the last world played
  */
-void start_world(World &world, const WorldSettings &settings, Camera &cam, Player &player, bool &is_camera_detached, bool &is_cursor_locked)
+void start_world(int slot, const WorldSettings &settings, World &world, Camera &cam, Player &player, bool &is_camera_detached, bool &is_cursor_locked)
 {
-    // building takes a moment, so show something instead of a frozen menu
-    draw_loading_screen();
+    // loading takes a moment, so show something instead of a frozen menu
+    draw_loading_screen("Loading world...");
 
-    build_world(world, settings);
+    if (!load_world(slot, world, cam, player))
+    {
+        draw_loading_screen("Generating world...");
 
-    cam.position = find_spawn(world);
-    cam.yaw = 0.0;
-    cam.pitch = 0.0;
+        build_world(world, settings);
+
+        cam.position = find_spawn(world);
+        cam.yaw = 0.0;
+        cam.pitch = 0.0;
+        player.is_flying = false;
+
+        save_world(slot, settings, world, cam, player);
+    }
+
+    // not saved, so these start the same whether the world was loaded or built
     player.velocity_y = 0.0;
     player.on_ground = false;
-    player.is_flying = false;
     is_camera_detached = false;
 
     // throws away any mouse movements from before to stop mouse movement on the first frame

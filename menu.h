@@ -75,7 +75,7 @@ MenuChoice main_menu_choice(const MainMenu &menu);
 void draw_main_menu(const MainMenu &menu);
 
 // shown while the world builds, so the game doesn't look frozen
-void draw_loading_screen();
+void draw_loading_screen(const string &message);
 
 // what was clicked on world select screen
 enum WorldSelectAction
@@ -161,5 +161,5 @@ CreateChoice handle_create_world_menu(const CreateWorldMenu &menu, CreateWorldFo
 // title, labels, boxes and buttons over the whole screen
 void draw_create_world_menu(const CreateWorldMenu &menu, const CreateWorldForm &form);
 
-// builds the world and puts the player in it, for a new or an existing world
-void start_world(World &world, const WorldSettings &settings, Camera &cam, Player &player, bool &is_camera_detached, bool &is_cursor_locked);
+// loads the slot's world, or builds and saves a new one if it has no save
+void start_world(int slot, const WorldSettings &settings, World &world, Camera &cam, Player &player, bool &is_camera_detached, bool &is_cursor_locked);

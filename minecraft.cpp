@@ -3,6 +3,7 @@
 #include "render.h"
 #include "input.h"
 #include "menu.h"
+#include "save.h"
 
 int main()
 {
@@ -13,12 +14,11 @@ int main()
     // not stored on the 1mb stack
     static World world;
 
-    // the worlds you can pick on the world select screen, all empty to start
-    SaveSlots save_slots;
-    for (int i = 0; i < NUM_SAVE_SLOTS; i++)
-    {
-        save_slots.slots[i].is_used = false;
-    }
+    // the worlds you can pick on the world select screen, read from the saves folder
+    SaveSlots save_slots = load_save_slots();
+
+    // which slot is being played, so quitting knows where to save. set when a world is started
+    int current_slot = 0;
 
     // opens on the main menu, the world is built when a slot is picked
     GameScreen screen = SCREEN_MAIN_MENU;
@@ -126,7 +126,8 @@ int main()
 
                 if (save_slots.slots[slot].is_used)
                 {
-                    start_world(world, save_slots.slots[slot].settings, cam, player, is_camera_detached, is_cursor_locked);
+                    start_world(slot, save_slots.slots[slot].settings, world, cam, player, is_camera_detached, is_cursor_locked);
+                    current_slot = slot;
 
                     // building took a while, so time the next frame from now not from before it
                     last_frame_ms = time_now_ms();
@@ -164,7 +165,8 @@ int main()
                 save_slots.slots[slot].settings = settings_from_form(create_form);
                 save_slots.slots[slot].is_used = true;
 
-                start_world(world, save_slots.slots[slot].settings, cam, player, is_camera_detached, is_cursor_locked);
+                start_world(slot, save_slots.slots[slot].settings, world, cam, player, is_camera_detached, is_cursor_locked);
+                current_slot = slot;
 
                 // building took a while, so time the next frame from now not from before it
                 last_frame_ms = time_now_ms();
@@ -222,6 +224,9 @@ int main()
             }
             else if (pause_choice == PAUSE_QUIT_TO_TITLE)
             {
+                draw_loading_screen("Saving world...");
+                save_world(current_slot, save_slots.slots[current_slot].settings, world, cam, player);
+
                 // the cursor is already unlocked, which the main menu needs
                 screen = SCREEN_MAIN_MENU;
                 continue;
@@ -265,6 +270,11 @@ int main()
         add_stage_time(frame_timer, STAGE_PRESENT, present_start);
 
         end_timed_frame(frame_timer);
+    }
+    // closing the window while playing saves too, so nothing is lost
+    if (screen == SCREEN_PLAYING)
+    {
+        save_world(current_slot, save_slots.slots[current_slot].settings, world, cam, player);
     }
 
     close_window("Voxel Engine");
