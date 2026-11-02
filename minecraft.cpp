@@ -289,6 +289,12 @@ int main()
         // colour, so you can tell what you're holding. a proper hotbar comes later
         fill_rectangle(block_colour(selected_block), 10, screen_height() - 40, 30, 30);
 
+        // shows which camera you're looking through, so the frozen player isn't mistaken for a bug
+        if (is_camera_detached)
+        {
+            draw_debug_cam_label();
+        }
+
         // over the world and hud, under the fps counter
         if (!is_cursor_locked)
         {

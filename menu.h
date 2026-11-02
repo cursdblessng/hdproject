@@ -191,3 +191,6 @@ DeleteChoice delete_menu_choice(const DeleteMenu &menu);
 
 // title, the world's name and the buttons over the whole screen
 void draw_delete_menu(const DeleteMenu &menu, const string &world_name);
+
+// red dot and "DEBUG CAMERA" in the bottom right corner, drawn while the camera is detached
+void draw_debug_cam_label();

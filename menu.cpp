@@ -547,6 +547,41 @@ void draw_pause_menu(const PauseMenu &menu)
     draw_controls(menu.quit_to_title.area.y + BUTTON_HEIGHT + BUTTON_GAP);
 }
 
+// how far the debug camera label sits in from the window's edges
+const double HUD_MARGIN = 10.0;
+const double DEBUG_DOT_RADIUS = 6.0;
+
+// space inside the label's box, around the dot and text and between them
+const double DEBUG_LABEL_PADDING = 8.0;
+
+/**
+ * dark see-through box in the bottom right corner with a red dot and red text,
+ * the box keeps the red readable over bright sky and blocks.
+ * the box is sized from the text, then everything is placed from its top left corner
+ */
+void draw_debug_cam_label()
+{
+    string text = "DEBUG CAMERA";
+    double width = text_width(text, MENU_FONT, LABEL_SIZE);
+    double height = text_height(text, MENU_FONT, LABEL_SIZE);
+
+    // padding, dot, padding, text, padding
+    double dot_space = DEBUG_DOT_RADIUS * 2.0 + DEBUG_LABEL_PADDING;
+    double box_width = DEBUG_LABEL_PADDING + dot_space + width + DEBUG_LABEL_PADDING;
+    double box_height = height + DEBUG_LABEL_PADDING * 2.0;
+
+    // measured back from the bottom right corner
+    double box_x = screen_width() - HUD_MARGIN - box_width;
+    double box_y = screen_height() - HUD_MARGIN - box_height;
+
+    fill_rectangle(rgba_color(0, 0, 0, 150), box_x, box_y, box_width, box_height);
+
+    // the dot and the text both line up on the box's middle height
+    double centre_y = box_y + box_height / 2.0;
+    fill_circle(COLOR_RED, box_x + DEBUG_LABEL_PADDING + DEBUG_DOT_RADIUS, centre_y, DEBUG_DOT_RADIUS);
+    draw_text(text, COLOR_RED, MENU_FONT, LABEL_SIZE, box_x + DEBUG_LABEL_PADDING + dot_space, centre_y - height / 2.0);
+}
+
 void draw_world_select_menu(const WorldSelectMenu &menu)
 {
     clear_screen(COLOR_SKY_BLUE);
