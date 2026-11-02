@@ -588,7 +588,7 @@ bool is_dry_land(const World &world, int x, int z)
  * checks the edge of a square around the centre, making the square 1 bigger each time,
  * so nearer columns are always checked first
  * the inside of each square was already checked by the smaller squares, so it's skipped
- * eyes are 1.5 above the feet, + 0.5 more drops you onto the ground
+ * 2.0 puts the eyes a bit higher than standing height (1.62), so you drop onto the ground
  */
 Vector3 find_spawn(const World &world)
 {

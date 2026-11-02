@@ -2,12 +2,12 @@
 #include "splashkit.h"
 #include <cmath> // sin, cos
 
-// player size, 0.6x2.0x0.6
-const double PLAYER_HEIGHT = 2.0; // 2 blocks tall
+// player size, 0.6x1.8x0.6
+const double PLAYER_HEIGHT = 1.8; // 1.8 blocks tall
 const double PLAYER_WIDTH = 0.6;  // 0.6 blocks wide
 
-// camera sits 1.5 blocks above bottom of the player, middle of top block
-const double EYE_HEIGHT = 1.5;
+// camera sits 1.62 above the bottom of the player, 0.18 below the top of the head
+const double EYE_HEIGHT = 1.62;
 
 // how much downward speed is added every frame (blocks per frame, per frame)
 const double GRAVITY = 0.008;
@@ -93,15 +93,17 @@ void move_player(Camera &cam, Player &player, const World &world, double dx, dou
     }
 }
 
-// wasd movement relative to where camera is facing
-// works out how much the player WANTS to move. move_player then checks for collision
-void handle_movement(Camera &cam, Player &player, const World &world)
+/**
+ * which way wasd is pushing on the flat ground, as a direction of length 1
+ * (or 0 if nothing is held, or opposite keys cancel out)
+ * the keys are added up first then scaled to length 1, otherwise two keys at
+ * right angles (w + d) add up to length sqrt(2) = 1.41 and diagonal is 41% faster
+ * ignores pitch so looking down doesn't slow you down
+ * Vector2 only has x and y, so y holds the z direction
+ */
+Vector2 wasd_direction(const Camera &cam)
 {
-    double move_speed = 0.1;
-
     // direction the camera faces on the flat ground
-    // ignores pitch so looking down doesn't slow you down
-
     double forward_x = -sin(cam.yaw);
     double forward_z = cos(cam.yaw);
 
@@ -109,31 +111,54 @@ void handle_movement(Camera &cam, Player &player, const World &world)
     double right_x = cos(cam.yaw);
     double right_z = sin(cam.yaw);
 
-    // total movement wanted this frame, added up from every key held
-    double dx = 0.0;
-    double dy = 0.0;
-    double dz = 0.0;
+    Vector2 direction = {0.0, 0.0};
 
     if (key_down(W_KEY))
     {
-        dx += forward_x * move_speed;
-        dz += forward_z * move_speed;
+        direction.x += forward_x;
+        direction.y += forward_z;
     }
     if (key_down(S_KEY))
     {
-        dx -= forward_x * move_speed;
-        dz -= forward_z * move_speed;
+        direction.x -= forward_x;
+        direction.y -= forward_z;
     }
     if (key_down(D_KEY))
     {
-        dx += right_x * move_speed;
-        dz += right_z * move_speed;
+        direction.x += right_x;
+        direction.y += right_z;
     }
     if (key_down(A_KEY))
     {
-        dx -= right_x * move_speed;
-        dz -= right_z * move_speed;
+        direction.x -= right_x;
+        direction.y -= right_z;
     }
+
+    // dividing by the length scales it to 1 without changing which way it points
+    // skipped at 0 (nothing held) because dividing by 0 breaks it
+    double length = sqrt(direction.x * direction.x + direction.y * direction.y);
+    if (length > 0.0)
+    {
+        direction.x /= length;
+        direction.y /= length;
+    }
+
+    return direction;
+}
+
+// wasd movement relative to where camera is facing
+// works out how much the player WANTS to move. move_player then checks for collision
+void handle_movement(Camera &cam, Player &player, const World &world)
+{
+    double move_speed = 0.1;
+
+    // length 1, so every direction (diagonal too) moves at move_speed
+    Vector2 direction = wasd_direction(cam);
+
+    // total movement wanted this frame
+    double dx = direction.x * move_speed;
+    double dy = 0.0;
+    double dz = direction.y * move_speed;
 
     if (player.is_flying)
     {
@@ -403,32 +428,12 @@ void handle_free_fly(Camera &cam)
     // move_speed is more because its more convenient
     double move_speed = 0.4;
 
-    // direction the camera faces on the flat ground, and its right
-    double forward_x = -sin(cam.yaw);
-    double forward_z = cos(cam.yaw);
-    double right_x = cos(cam.yaw);
-    double right_z = sin(cam.yaw);
+    // same direction as handle_movement, so diagonal isn't faster here either
+    Vector2 direction = wasd_direction(cam);
 
-    if (key_down(W_KEY))
-    {
-        cam.position.x += forward_x * move_speed;
-        cam.position.z += forward_z * move_speed;
-    }
-    if (key_down(S_KEY))
-    {
-        cam.position.x -= forward_x * move_speed;
-        cam.position.z -= forward_z * move_speed;
-    }
-    if (key_down(D_KEY))
-    {
-        cam.position.x += right_x * move_speed;
-        cam.position.z += right_z * move_speed;
-    }
-    if (key_down(A_KEY))
-    {
-        cam.position.x -= right_x * move_speed;
-        cam.position.z -= right_z * move_speed;
-    }
+    cam.position.x += direction.x * move_speed;
+    cam.position.z += direction.y * move_speed;
+
     if (key_down(SPACE_KEY))
     {
         cam.position.y += move_speed;
