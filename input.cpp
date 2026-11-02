@@ -9,17 +9,30 @@ const double PLAYER_WIDTH = 0.6;  // 0.6 blocks wide
 // camera sits 1.62 above the bottom of the player, 0.18 below the top of the head
 const double EYE_HEIGHT = 1.62;
 
-// how much downward speed is added every frame (blocks per frame, per frame)
-const double GRAVITY = 0.008;
+// speeds are in blocks per second, so movement is the same at any frame rate
+const double WALK_SPEED = 4.3;
+const double FLY_SPEED = 10.0;
+const double DEBUG_FLY_SPEED = 20.0; // debug camera, faster because it's for looking around
 
-// upward speed given at the start of a jump. with GRAVITY = 0.008 this
-// rises about 1.3 blocks, just enough to jump up onto a block
-const double JUMP_SPEED = 0.14;
+// how much downward speed is added every second (blocks per second, per second)
+const double GRAVITY = 32.0;
 
-// the fastest you can fall. MUST stay below 1 block per frame, otherwise
-// one step could skip right over a block and the ceil() snap in
+// how high a jump goes. a bit over 1 so your feet get above a block's top, not just level with it
+const double JUMP_HEIGHT = 1.25;
+
+// upward speed needed to reach JUMP_HEIGHT: gravity takes away GRAVITY speed per second,
+// so from v = sqrt(2 * gravity * height) it slows to 0 exactly at that height.
+// worked out from the other two, so changing gravity keeps the same jump height
+const double JUMP_SPEED = sqrt(2.0 * GRAVITY * JUMP_HEIGHT);
+
+// the fastest you can fall, in blocks per second
+const double MAX_FALL_SPEED = 50.0;
+
+// the longest one physics step can be. a slow frame is split into steps this short,
+// so nothing moves 1 block or more in a single step (50 * 1/60 = 0.83 at full fall speed).
+// moving 1 or more could skip right over a block, and the ceil() snap in
 // move_player would put you on the wrong surface (or through the floor)
-const double MAX_FALL_SPEED = 0.5;
+const double MAX_PHYSICS_STEP = 1.0 / 60.0;
 
 Box player_box(const Vector3 &eye)
 {
@@ -146,19 +159,24 @@ Vector2 wasd_direction(const Camera &cam)
     return direction;
 }
 
-// wasd movement relative to where camera is facing
-// works out how much the player WANTS to move. move_player then checks for collision
-void handle_movement(Camera &cam, Player &player, const World &world)
+/**
+ * one short physics step of step_time seconds
+ * speeds are per second so multiplying by step time gives how far to move that step
+ * velocity changes by GRAVITY * step_time, falling builds up the same at any fps
+ * direction worked out once per frame
+ */
+void movement_step(Camera &cam, Player &player, const World &world, const Vector2 &direction, double step_time)
 {
-    double move_speed = 0.1;
+    double speed = WALK_SPEED;
+    if (player.is_flying)
+    {
+        speed = FLY_SPEED;
+    }
 
-    // length 1, so every direction (diagonal too) moves at move_speed
-    Vector2 direction = wasd_direction(cam);
-
-    // total movement wanted this frame
-    double dx = direction.x * move_speed;
+    // how far to move in this step
+    double dx = direction.x * speed * step_time;
     double dy = 0.0;
-    double dz = direction.y * move_speed;
+    double dz = direction.y * speed * step_time;
 
     if (player.is_flying)
     {
@@ -166,21 +184,21 @@ void handle_movement(Camera &cam, Player &player, const World &world)
         // no gravity, so you hover when neither is held
         if (key_down(SPACE_KEY))
         {
-            dy += move_speed;
+            dy += FLY_SPEED * step_time;
         }
         if (key_down(LEFT_SHIFT_KEY))
         {
-            dy -= move_speed;
+            dy -= FLY_SPEED * step_time;
         }
     }
     else
     {
-        // walking: gravity pulls a bit harder every frame. this runs even
+        // walking: gravity pulls a bit harder every step. this runs even
         // while standing, so move_player keeps bumping into the ground and
         // keeps on_ground up to date (walk off a ledge -> on_ground goes false)
-        player.velocity_y -= GRAVITY;
+        player.velocity_y -= GRAVITY * step_time;
 
-        // cap the fall speed (see MAX_FALL_SPEED for why)
+        // cap the fall speed (see MAX_FALL_SPEED)
         if (player.velocity_y < -MAX_FALL_SPEED)
         {
             player.velocity_y = -MAX_FALL_SPEED;
@@ -192,10 +210,36 @@ void handle_movement(Camera &cam, Player &player, const World &world)
             player.velocity_y = JUMP_SPEED;
         }
 
-        dy = player.velocity_y;
+        dy = player.velocity_y * step_time;
     }
 
     move_player(cam, player, world, dx, dy, dz);
+}
+
+/**
+ * wasd movement relative to where camera is facing, for dt seconds
+ * a long frame is split into equal steps no longer than MAX_PHYSICS_STEP,
+ * so collision still works when the fps is low
+ * e.g. dt = 0.05 at 20 fps: ceil(0.05 / 0.0167) = 3 steps of 0.0167 each
+ */
+void handle_movement(Camera &cam, Player &player, const World &world, double dt)
+{
+    // no time passed, nothing to do (also stops a divide by 0 below)
+    if (dt <= 0.0)
+    {
+        return;
+    }
+
+    // keys are only read once per frame, every step uses the same direction
+    Vector2 direction = wasd_direction(cam);
+
+    int steps = (int)ceil(dt / MAX_PHYSICS_STEP);
+    double step_time = dt / steps;
+
+    for (int i = 0; i < steps; i++)
+    {
+        movement_step(cam, player, world, direction, step_time);
+    }
 }
 
 // mouse look, only called when the cursor is locked
@@ -423,23 +467,22 @@ void handle_camera_detach_toggle(bool &is_detached, Camera &debug_cam, const Cam
  * same as handle_movement but moves the camera directly instead of going through move_player.
  * so it can fly through the blocks
  */
-void handle_free_fly(Camera &cam)
+void handle_free_fly(Camera &cam, double dt)
 {
-    // move_speed is more because its more convenient
-    double move_speed = 0.4;
+    double distance = DEBUG_FLY_SPEED * dt;
 
     // same direction as handle_movement, so diagonal isn't faster here either
     Vector2 direction = wasd_direction(cam);
 
-    cam.position.x += direction.x * move_speed;
-    cam.position.z += direction.y * move_speed;
+    cam.position.x += direction.x * distance;
+    cam.position.z += direction.y * distance;
 
     if (key_down(SPACE_KEY))
     {
-        cam.position.y += move_speed;
+        cam.position.y += distance;
     }
     if (key_down(LEFT_SHIFT_KEY))
     {
-        cam.position.y -= move_speed;
+        cam.position.y -= distance;
     }
 }

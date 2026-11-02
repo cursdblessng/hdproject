@@ -10,13 +10,13 @@
  */
 struct Player
 {
-    double velocity_y; // up/down speed in blocks per frame, negative = falling
+    double velocity_y; // up/down speed in blocks per second, negative = falling
     bool on_ground;    // standing on something, so allowed to jump
     bool is_flying;    // true = no gravity, space/shift move up and down
 };
 
-// wasd movement relative to where camera is facing, space/shift for up/down
-void handle_movement(Camera &cam, Player &player, const World &world);
+// wasd movement relative to where camera is facing, space/shift for up/down, dt = seconds since last frame
+void handle_movement(Camera &cam, Player &player, const World &world, double dt);
 
 // mouse look, only called when the cursor is locked
 void handle_mouse_look(Camera &cam, double mouse_sensitivity);
@@ -45,5 +45,5 @@ void handle_see_through_toggle(bool &see_through);
 // c detaches the view into a free flying debug camera (starts at the player's view)
 void handle_camera_detach_toggle(bool &is_detached, Camera &debug_cam, const Camera &player_cam);
 
-// flies a camera around with no gravity or collision (debug camera)
-void handle_free_fly(Camera &cam);
+// flies a camera around with no gravity or collision (debug camera), dt = seconds since last frame
+void handle_free_fly(Camera &cam, double dt);

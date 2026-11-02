@@ -66,9 +66,26 @@ int main()
     // times each part of the frame and prints the averages every second, in timing.cpp
     FrameTimer frame_timer = make_frame_timer();
 
+    // a frame longer than this (dragging the window, a big hitch) is treated as this long,
+    // so the player doesn't suddenly jump a long way after the game stalls
+    const double MAX_FRAME_SECONDS = 0.25;
+
+    // when the last frame started, so each frame knows how long the one before took
+    double last_frame_ms = time_now_ms();
+
     while (!quit_requested())
     {
         start_timed_frame(frame_timer);
+
+        // seconds since the last frame, used to make movement per second instead of per frame
+        double now_ms = time_now_ms();
+        double dt = (now_ms - last_frame_ms) / 1000.0;
+        last_frame_ms = now_ms;
+
+        if (dt > MAX_FRAME_SECONDS)
+        {
+            dt = MAX_FRAME_SECONDS;
+        }
 
         process_events();
 
@@ -80,25 +97,20 @@ int main()
         handle_camera_detach_toggle(is_camera_detached, debug_cam, cam);
         handle_block_select(selected_block);
 
+        // escape unlocks the cursor and pauses: nothing moves, no gravity,
+        // no breaking or placing until the cursor is locked again.
         // only one camera is controlled at a time. while detached the
         // player is frozen: no movement, no gravity, no breaking or placing
-        if (is_camera_detached)
-        {
-            handle_free_fly(debug_cam);
-        }
-        else
-        {
-            handle_movement(cam, player, world);
-        }
-
         if (is_cursor_locked)
         {
             if (is_camera_detached)
             {
+                handle_free_fly(debug_cam, dt);
                 handle_mouse_look(debug_cam, mouse_sensitivity);
             }
             else
             {
+                handle_movement(cam, player, world, dt);
                 handle_mouse_look(cam, mouse_sensitivity);
 
                 // after mouse look, so the ray uses where you're looking THIS frame
