@@ -26,6 +26,9 @@ int main()
     // what has been typed and picked on the create world screen, reset when an empty slot is clicked
     CreateWorldForm create_form = make_create_world_form(0);
 
+    // which slot the delete world screen is asking about, set when its delete button is clicked
+    int delete_slot = 0;
+
     Camera cam;
 
     cam.position = {0.0, 0.0, 0.0}; // moved to the spawn when a slot is picked
@@ -141,6 +144,12 @@ int main()
                     screen = SCREEN_CREATE_WORLD;
                 }
             }
+            else if (select_choice.action == SELECT_DELETE)
+            {
+                // ask first, nothing is deleted until it's confirmed
+                delete_slot = select_choice.slot;
+                screen = SCREEN_DELETE_WORLD;
+            }
             else if (select_choice.action == SELECT_BACK)
             {
                 screen = SCREEN_MAIN_MENU;
@@ -176,6 +185,31 @@ int main()
             else if (create_choice == CREATE_CANCEL)
             {
                 // the slot stays empty
+                screen = SCREEN_WORLD_SELECT;
+            }
+
+            // same as the main menu, nothing in the world runs here
+            continue;
+        }
+
+        if (screen == SCREEN_DELETE_WORLD)
+        {
+            DeleteMenu delete_menu = make_delete_menu();
+            draw_delete_menu(delete_menu, save_slots.slots[delete_slot].settings.name);
+            refresh_screen(TARGET_FPS);
+
+            DeleteChoice delete_choice = delete_menu_choice(delete_menu);
+
+            if (delete_choice == DELETE_CONFIRM)
+            {
+                delete_world(delete_slot);
+
+                // shows as an empty slot straight away, without reading the files again
+                save_slots.slots[delete_slot].is_used = false;
+                screen = SCREEN_WORLD_SELECT;
+            }
+            else if (delete_choice == DELETE_CANCEL)
+            {
                 screen = SCREEN_WORLD_SELECT;
             }
 

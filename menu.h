@@ -11,6 +11,7 @@ enum GameScreen
     SCREEN_MAIN_MENU,
     SCREEN_WORLD_SELECT,
     SCREEN_CREATE_WORLD,
+    SCREEN_DELETE_WORLD,
     SCREEN_PLAYING
 };
 
@@ -82,20 +83,23 @@ enum WorldSelectAction
 {
     SELECT_NONE,
     SELECT_SLOT,
+    SELECT_DELETE,
     SELECT_BACK
 };
 
-// the action, plus which slot it was for SELECT_SLOT
+// the action, plus which slot it was for SELECT_SLOT and SELECT_DELETE
 struct WorldSelectChoice
 {
     WorldSelectAction action;
     int slot;
 };
 
-// one button per save slot
+// one button per save slot, a delete button next to each used one, then back
 struct WorldSelectMenu
 {
     Button slots[NUM_SAVE_SLOTS];
+    Button deletes[NUM_SAVE_SLOTS];
+    bool can_delete[NUM_SAVE_SLOTS]; // only used slots have a world to delete
     Button back;
 };
 
@@ -163,3 +167,27 @@ void draw_create_world_menu(const CreateWorldMenu &menu, const CreateWorldForm &
 
 // loads the slot's world, or builds and saves a new one if it has no save
 void start_world(int slot, const WorldSettings &settings, World &world, Camera &cam, Player &player, bool &is_camera_detached, bool &is_cursor_locked);
+
+// what was clicked on the delete world screen
+enum DeleteChoice
+{
+    DELETE_NONE,
+    DELETE_CONFIRM,
+    DELETE_CANCEL
+};
+
+// asks before deleting, because a deleted world can't be brought back
+struct DeleteMenu
+{
+    Button confirm;
+    Button cancel;
+};
+
+// buttons laid out for the current window size
+DeleteMenu make_delete_menu();
+
+// which button was clicked this frame
+DeleteChoice delete_menu_choice(const DeleteMenu &menu);
+
+// title, the world's name and the buttons over the whole screen
+void draw_delete_menu(const DeleteMenu &menu, const string &world_name);

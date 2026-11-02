@@ -171,6 +171,20 @@ bool load_world(int slot, World &world, Camera &cam, Player &player)
 }
 
 /**
+ * empties both of the slot's files instead of removing them.
+ * removing a file needs std::remove, which only takes a c style string (a pointer).
+ * an empty .txt can't be read, so load_save_slots sees the slot as empty,
+ * and making a new world there writes over both files
+ */
+void delete_world(int slot)
+{
+    // opening a file for writing empties it straight away,
+    // and they close at the end of the function with nothing written
+    std::ofstream bin_file(slot_path(slot, ".bin"), std::ios::binary);
+    std::ofstream txt_file(slot_path(slot, ".txt"));
+}
+
+/**
  * a slot is used if its .txt opens and has settings in it.
  * only the .txt is read, the blocks aren't loaded until the world is opened
  */

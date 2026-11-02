@@ -11,5 +11,8 @@ void save_world(int slot, const WorldSettings &settings, const World &world, con
 // false if the files are missing or damaged
 bool load_world(int slot, World &world, Camera &cam, Player &player);
 
+// empties the slot so it shows as an empty slot and a new world can be made in it
+void delete_world(int slot);
+
 // which slots have a saved world and what they're called, read when the game opens
 SaveSlots load_save_slots();

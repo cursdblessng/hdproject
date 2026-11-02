@@ -93,10 +93,28 @@ WorldSelectMenu make_world_select_menu(const SaveSlots &save_slots)
         }
 
         menu.slots[i] = make_button(label, centre_x, first_y + i * spacing);
+
+        // a square just right of the slot, same height so it lines up
+        menu.deletes[i].area = rectangle_from(menu.slots[i].area.x + BUTTON_WIDTH + BUTTON_GAP / 2.0, menu.slots[i].area.y, BUTTON_HEIGHT, BUTTON_HEIGHT);
+        menu.deletes[i].label = "X";
+        menu.can_delete[i] = save_slots.slots[i].is_used;
     }
 
     // under the last slot
     menu.back = make_button("Back", centre_x, first_y + NUM_SAVE_SLOTS * spacing);
+    return menu;
+}
+
+// same layout as the pause menu, the text about the world goes above
+DeleteMenu make_delete_menu()
+{
+    double centre_x = screen_width() / 2.0;
+    double first_y = screen_height() / 2.0;
+    double spacing = BUTTON_HEIGHT + BUTTON_GAP;
+
+    DeleteMenu menu;
+    menu.confirm = make_button("Delete", centre_x, first_y);
+    menu.cancel = make_button("Cancel", centre_x, first_y + spacing);
     return menu;
 }
 
@@ -259,6 +277,13 @@ WorldSelectChoice world_select_choice(const WorldSelectMenu &menu)
             choice.action = SELECT_SLOT;
             choice.slot = i;
         }
+
+        // empty slots have no delete button, so a click there doesn't count
+        if (menu.can_delete[i] && button_clicked(menu.deletes[i]))
+        {
+            choice.action = SELECT_DELETE;
+            choice.slot = i;
+        }
     }
 
     if (button_clicked(menu.back))
@@ -267,6 +292,19 @@ WorldSelectChoice world_select_choice(const WorldSelectMenu &menu)
     }
 
     return choice;
+}
+
+DeleteChoice delete_menu_choice(const DeleteMenu &menu)
+{
+    if (button_clicked(menu.confirm))
+    {
+        return DELETE_CONFIRM;
+    }
+    if (button_clicked(menu.cancel))
+    {
+        return DELETE_CANCEL;
+    }
+    return DELETE_NONE;
 }
 
 /**
@@ -379,13 +417,12 @@ void draw_centred_text(const string &text, color colour, int size, double centre
     draw_text(text, colour, MENU_FONT, size, centre_x - width / 2.0, centre_y - height / 2.0);
 }
 
-// grey box with a black border, lighter while the mouse is over it so you can tell it's clickable
-void draw_button(const Button &button)
+// box with a black border, hover_fill while the mouse is over it so you can tell it's clickable
+void draw_button_in_colour(const Button &button, color fill, color hover_fill)
 {
-    color fill = rgb_color(90, 90, 90);
     if (is_mouse_over(button))
     {
-        fill = rgb_color(130, 130, 130);
+        fill = hover_fill;
     }
 
     fill_rectangle(fill, button.area);
@@ -394,6 +431,12 @@ void draw_button(const Button &button)
     double centre_x = button.area.x + button.area.width / 2.0;
     double centre_y = button.area.y + button.area.height / 2.0;
     draw_centred_text(button.label, COLOR_WHITE, BUTTON_TEXT_SIZE, centre_x, centre_y);
+}
+
+// the normal grey button
+void draw_button(const Button &button)
+{
+    draw_button_in_colour(button, rgb_color(90, 90, 90), rgb_color(130, 130, 130));
 }
 
 /**
@@ -513,8 +556,34 @@ void draw_world_select_menu(const WorldSelectMenu &menu)
     for (int i = 0; i < NUM_SAVE_SLOTS; i++)
     {
         draw_button(menu.slots[i]);
+
+        // red so it stands out from the slot as something that can't be undone
+        if (menu.can_delete[i])
+        {
+            draw_button_in_colour(menu.deletes[i], rgb_color(160, 40, 40), rgb_color(210, 60, 60));
+        }
     }
     draw_button(menu.back);
+}
+
+/**
+ * says which world is about to go, so the wrong one isn't deleted by mistake.
+ * between the title and the buttons, the name big and the warning smaller under it
+ */
+void draw_delete_menu(const DeleteMenu &menu, const string &world_name)
+{
+    clear_screen(COLOR_SKY_BLUE);
+
+    double centre_x = screen_width() / 2.0;
+
+    draw_centred_text("Delete World?", COLOR_WHITE, TITLE_SIZE, centre_x, screen_height() / 4.0);
+
+    draw_centred_text(world_name, COLOR_WHITE, BUTTON_TEXT_SIZE, centre_x, menu.confirm.area.y - 75.0);
+    draw_centred_text("will be gone forever", COLOR_WHITE, LABEL_SIZE, centre_x, menu.confirm.area.y - 40.0);
+
+    // red like the X, so it's clear this is the one that deletes
+    draw_button_in_colour(menu.confirm, rgb_color(160, 40, 40), rgb_color(210, 60, 60));
+    draw_button(menu.cancel);
 }
 
 void draw_create_world_menu(const CreateWorldMenu &menu, const CreateWorldForm &form)
