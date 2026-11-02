@@ -723,6 +723,14 @@ RayAxis make_ray_axis(double pos, double dir)
         axis.t_delta = -1.0 / dir;
         axis.t_max = (pos - axis.cell) * axis.t_delta;
     }
+    else
+    {
+        // not moving along this axis, so it never reaches an edge
+        // t_max is so far away this axis is never the one picked to step
+        axis.step = 0;
+        axis.t_delta = RAY_NEVER;
+        axis.t_max = RAY_NEVER;
+    }
 
     return axis;
 }
