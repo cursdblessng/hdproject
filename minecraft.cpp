@@ -15,7 +15,7 @@ int main()
     // the type and the seed, and saving will store them
     const bool USE_SUPERFLAT = false;
     const int SUPERFLAT_SIZE = 100;
-    const unsigned int WORLD_SEED = 12345;
+    const unsigned int WORLD_SEED = 10;
 
     if (USE_SUPERFLAT)
     {

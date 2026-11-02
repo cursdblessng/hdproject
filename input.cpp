@@ -401,7 +401,7 @@ void handle_camera_detach_toggle(bool &is_detached, Camera &debug_cam, const Cam
 void handle_free_fly(Camera &cam)
 {
     // move_speed is more because its more convenient
-    double move_speed = 0.2;
+    double move_speed = 0.4;
 
     // direction the camera faces on the flat ground, and its right
     double forward_x = -sin(cam.yaw);

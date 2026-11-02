@@ -30,12 +30,13 @@ const int TERRAIN_OCTAVES = 4;         // layers of detail, see fractal_noise
 const int DIRT_DEPTH = 3;              // dirt blocks under the grass, stone below that
 const double CLIFF_SLOPE = 2.5;        // slopes this steep or more are bare stone, lower = more stone
 
-// noise is higher for more extreme biomes
+// noise is higher for every layer
 const int NOISE_LAYER_PLAINS = 0;
 const int NOISE_LAYER_REGIONS = 1;
 const int NOISE_LAYER_MOUNTAINS = 2;
 const int NOISE_LAYER_CONTINENTS = 3;
 const int NOISE_LAYER_FORESTS = 4;
+const int NOISE_LAYER_RIVERS = 5;
 
 // oceans
 const double CONTINENT_SCALE = 192.0; // roughly how wide oceans and landmasses are
@@ -43,6 +44,7 @@ const double CONTINENT_HEIGHT = 30.0; // how far land rises and ocean floor sink
 const double COAST_FADE = 4.0;        // higher = mountains start closer to the coast
 const int SEA_LEVEL = 40;             // y of the top water block
 const int BEACH_HEIGHT = 1;           // land up to this many blocks above sea level is sand
+const int BEACH_WIDTH = 2;            // land within this many blocks of water is sand
 
 // trees
 const int TREE_SPACING = 5;   // world is split into squares this wide, each can hold one tree
@@ -51,6 +53,11 @@ const int TREE_MAX_TRUNK = 6;
 const double FOREST_SCALE = 128.0;      // roughly how wide forests and clearings are
 const double PLAINS_TREE_CHANCE = 0.03; // chance that a square gets a tree in open land
 const double FOREST_TREE_CHANCE = 0.6;  // chance that a square gets a tree in a forest
+
+// rivers
+const double RIVER_SCALE = 256.0; // roughly how far a river goes before turning
+const double RIVER_WIDTH = 0.04;  // how close to 0 the river noise has to be, bigger means wider rivers
+const int RIVER_DEPTH = 3;        // how far below sea level the middle of a river is carved
 
 // picks display color for blocks
 color block_colour(BlockType type)
@@ -274,7 +281,28 @@ double terrain_height_exact(int x, int z, unsigned int seed)
     double continent = fractal_noise(x, z, CONTINENT_SCALE, seed, NOISE_LAYER_CONTINENTS);
     double land_amount = smooth_01(clamp_01(continent * COAST_FADE));
 
-    return TERRAIN_BASE_HEIGHT + plains * PLAINS_HEIGHT + land_amount * mountain_amount * ridge * MOUNTAIN_HEIGHT + continent * CONTINENT_HEIGHT;
+    double height = TERRAIN_BASE_HEIGHT + plains * PLAINS_HEIGHT + land_amount * mountain_amount * ridge * MOUNTAIN_HEIGHT + continent * CONTINENT_HEIGHT;
+
+    /**
+     * rivers: the same idea as the ridges but the other way round.
+     * the river noise crosses 0 along long winding lines, so rivers go where |noise| is near 0
+     * river_amount is 1 in the middle of a river and fades to 0 at the edge of its band,
+     * smoothstep gives it a flat bottom and gently sloping banks
+     * the ground is pulled down towards the river bed by river_amount, so the middle
+     * is carved all the way and the banks only partly
+     * only pulled down, never up, so the ocean floor deeper than the bed is left alone
+     * the bed is below sea level, so build_terrain's water loop fills the channel
+     */
+    double river = fractal_noise(x, z, RIVER_SCALE, seed, NOISE_LAYER_RIVERS);
+    double river_amount = smooth_01(clamp_01(1.0 - fabs(river) / RIVER_WIDTH));
+    double river_bed = SEA_LEVEL - RIVER_DEPTH;
+
+    if (height > river_bed)
+    {
+        height = height + (river_bed - height) * river_amount;
+    }
+
+    return height;
 }
 
 /**
@@ -411,6 +439,63 @@ void add_trees(World &world, unsigned int seed)
 }
 
 /**
+ * is there water within BEACH_WIDTH blocks of column x,z, diagonals included
+ * all water fills up to sea level, so only that one y needs checking per column
+ * outside the world reads as air, so the edges are safe
+ */
+bool is_near_water(const World &world, int x, int z)
+{
+    for (int dx = -BEACH_WIDTH; dx <= BEACH_WIDTH; dx++)
+    {
+        for (int dz = -BEACH_WIDTH; dz <= BEACH_WIDTH; dz++)
+        {
+            if (get_block(world, x + dx, SEA_LEVEL, z + dz) == WATER)
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
+ * turns land next to water into sand
+ * runs after the whole terrain and all the water is built, so every column can see its neighbours
+ * only grass tops from sea level up to BEACH_HEIGHT above it, so tall banks stay grassy
+ * the grass and the dirt under it become sand, stone further down stays
+ */
+void add_beaches(World &world)
+{
+    for (int x = 0; x < WORLD_SIZE; x++)
+    {
+        for (int z = 0; z < WORLD_SIZE; z++)
+        {
+            // the only y values a beach top can be at
+            for (int top = SEA_LEVEL; top <= SEA_LEVEL + BEACH_HEIGHT; top++)
+            {
+                // grass with air above is the top of this column
+                bool is_top = get_block(world, x, top, z) == GRASS && get_block(world, x, top + 1, z) == AIR;
+
+                if (!is_top || !is_near_water(world, x, z))
+                {
+                    continue;
+                }
+
+                for (int y = top - DIRT_DEPTH; y <= top; y++)
+                {
+                    BlockType type = get_block(world, x, y, z);
+                    if (type == GRASS || type == DIRT)
+                    {
+                        set_block(world, x, y, z, SAND);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * fills the whole world with the noised terrain
  * each column from the bottom is stone, then dirt depth, then 1 grass
  * world starts as all air so only the solid parts need setting
@@ -429,8 +514,8 @@ void build_terrain(World &world, unsigned int seed)
             // steep enough that grass and dirt couldnt stay on it
             bool is_cliff = terrain_slope(x, z, seed) >= CLIFF_SLOPE;
 
-            // beaches are just above the water ocean is below
-            bool is_sandy = surface <= SEA_LEVEL + BEACH_HEIGHT;
+            // sea and river floor, beaches are added after by add_beaches
+            bool is_underwater = surface < SEA_LEVEL;
 
             for (int y = 0; y <= surface; y++)
             {
@@ -440,7 +525,7 @@ void build_terrain(World &world, unsigned int seed)
                     // whole column, so the cliff face shows no dirt layers either
                     type = STONE;
                 }
-                else if (is_sandy && y >= surface - DIRT_DEPTH)
+                else if (is_underwater && y >= surface - DIRT_DEPTH)
                 {
                     type = SAND;
                 }
@@ -467,7 +552,11 @@ void build_terrain(World &world, unsigned int seed)
         }
     }
 
+    // needs all the water placed first to know which land is next to it
+    add_beaches(world);
+
     // after all terrain is generated, place the trees
+    // after the beaches so trees only grow on the grass that's left
     add_trees(world, seed);
 }
 
