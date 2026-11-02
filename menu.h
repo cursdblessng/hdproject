@@ -198,18 +198,22 @@ void draw_delete_menu(const DeleteMenu &menu, const string &world_name);
 
 // red dot and "DEBUG CAMERA" in the bottom right corner, drawn while the camera is detached
 void draw_debug_cam_label();
-// one button per setting showing its current option, then done
+// one button per setting showing its current option, then done and a button to switch page.
+// only the settings on the current page are laid out, drawn and clicked
 struct SettingsMenu
 {
     Button options[NUM_SETTINGS];
     Button done;
+    Button page_switch;
+    int page;
 };
 
-// buttons laid out for the current window size, labelled from the settings
-SettingsMenu make_settings_menu(const Settings &settings);
+// buttons for one page laid out for the current window size, labelled from the settings
+SettingsMenu make_settings_menu(const Settings &settings, int page);
 
-// left click moves a setting to its next option, right click back. true when done is clicked
-bool handle_settings_menu(const SettingsMenu &menu, Settings &settings);
+// left click moves a setting to its next option, right click back, the page button changes page.
+// true when done is clicked
+bool handle_settings_menu(const SettingsMenu &menu, Settings &settings, int &page);
 
 // title, each setting's name next to its button, and done, over the whole screen
 void draw_settings_menu(const SettingsMenu &menu);

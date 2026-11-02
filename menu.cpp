@@ -19,6 +19,9 @@ const int LABEL_SIZE = 14;
 const double LABEL_SPACE = 30.0;      // room left above a box for its label
 const double TEXT_BOX_PADDING = 10.0; // gap between a text box's left edge and its text
 
+// settings rows are closer together than other menus, so the debug page fits on a 600 tall window
+const double SETTINGS_ROW_SPACING = BUTTON_HEIGHT + 10.0;
+
 // most characters a name or seed can have, so it fits in its box and on the slot button
 const int MAX_TEXT_LENGTH = 12;
 
@@ -120,27 +123,55 @@ DeleteMenu make_delete_menu()
 }
 
 /**
- * one row per setting, its button in the right half and its name drawn to the left.
- * all the rows plus done are centred top to bottom
+ * one row per setting on this page, its button in the right half and its name drawn to the left.
+ * settings on other pages are skipped, so their buttons are never used.
+ * the rows plus the bottom row are centred top to bottom
  */
-SettingsMenu make_settings_menu(const Settings &settings)
+SettingsMenu make_settings_menu(const Settings &settings, int page)
 {
     double centre_x = screen_width() / 2.0;
-    double spacing = BUTTON_HEIGHT + BUTTON_GAP;
 
-    // NUM_SETTINGS rows and done, so half of that height above the middle
-    double first_y = screen_height() / 2.0 - (NUM_SETTINGS + 1) * spacing / 2.0;
+    int rows = 0;
+    for (int i = 0; i < NUM_SETTINGS; i++)
+    {
+        if (setting_page(i) == page)
+        {
+            rows++;
+        }
+    }
+
+    // the rows and the bottom row, so half of that height above the middle
+    double first_y = screen_height() / 2.0 - (rows + 1) * SETTINGS_ROW_SPACING / 2.0;
 
     // half a gap right of the middle, so the name and button have a gap between them
     double button_centre_x = centre_x + BUTTON_GAP / 2.0 + BUTTON_WIDTH / 2.0;
 
     SettingsMenu menu;
+    menu.page = page;
+
+    // counts rows on this page only, so there are no gaps where other pages' settings are
+    int row = 0;
     for (int i = 0; i < NUM_SETTINGS; i++)
     {
-        menu.options[i] = make_button(option_label(settings, i), button_centre_x, first_y + i * spacing);
+        if (setting_page(i) == page)
+        {
+            menu.options[i] = make_button(option_label(settings, i), button_centre_x, first_y + row * SETTINGS_ROW_SPACING);
+            row++;
+        }
     }
 
-    menu.done = make_button("Done", centre_x, first_y + NUM_SETTINGS * spacing);
+    // done and the page button share the bottom row, each half as wide like create and cancel
+    double bottom_y = first_y + rows * SETTINGS_ROW_SPACING;
+    double half_width = (BUTTON_WIDTH - BUTTON_GAP) / 2.0;
+
+    menu.done = make_button("Done", centre_x, bottom_y);
+    menu.done.area.width = half_width;
+
+    // named after the page it goes to, the next one round
+    menu.page_switch = make_button(page_name((page + 1) % NUM_SETTING_PAGES), centre_x, bottom_y);
+    menu.page_switch.area.width = half_width;
+    menu.page_switch.area.x += half_width + BUTTON_GAP;
+
     return menu;
 }
 
@@ -345,12 +376,18 @@ DeleteChoice delete_menu_choice(const DeleteMenu &menu)
 
 /**
  * the settings change straight away, so they're already in use when done is clicked.
- * main saves them to the file then
+ * main saves them to the file then.
+ * only this page's buttons count, the others weren't laid out
  */
-bool handle_settings_menu(const SettingsMenu &menu, Settings &settings)
+bool handle_settings_menu(const SettingsMenu &menu, Settings &settings, int &page)
 {
     for (int i = 0; i < NUM_SETTINGS; i++)
     {
+        if (setting_page(i) != menu.page)
+        {
+            continue;
+        }
+
         if (button_clicked(menu.options[i]))
         {
             next_option(settings, i);
@@ -359,6 +396,12 @@ bool handle_settings_menu(const SettingsMenu &menu, Settings &settings)
         {
             previous_option(settings, i);
         }
+    }
+
+    // round to the first page after the last
+    if (button_clicked(menu.page_switch))
+    {
+        page = (page + 1) % NUM_SETTING_PAGES;
     }
 
     return button_clicked(menu.done);
@@ -685,11 +728,25 @@ void draw_settings_menu(const SettingsMenu &menu)
 
     double centre_x = screen_width() / 2.0;
 
-    // above the first row
-    draw_centred_text("Settings", COLOR_WHITE, TITLE_SIZE, centre_x, menu.options[0].area.y - 50.0);
+    // above the first row, the done button is always there to measure from
+    int rows = 0;
+    for (int i = 0; i < NUM_SETTINGS; i++)
+    {
+        if (setting_page(i) == menu.page)
+        {
+            rows++;
+        }
+    }
+    double first_y = menu.done.area.y - rows * SETTINGS_ROW_SPACING;
+    draw_centred_text(page_title(menu.page), COLOR_WHITE, TITLE_SIZE, centre_x, first_y - 45.0);
 
     for (int i = 0; i < NUM_SETTINGS; i++)
     {
+        if (setting_page(i) != menu.page)
+        {
+            continue;
+        }
+
         string name = setting_name(i);
         double width = text_width(name, MENU_FONT, BUTTON_TEXT_SIZE);
         double height = text_height(name, MENU_FONT, BUTTON_TEXT_SIZE);
@@ -703,6 +760,7 @@ void draw_settings_menu(const SettingsMenu &menu)
     }
 
     draw_button(menu.done);
+    draw_button(menu.page_switch);
 
     // under done, so it's clear the buttons can go both ways
     draw_centred_text("Click to change, right click to go back", COLOR_WHITE, LABEL_SIZE, centre_x, menu.done.area.y + BUTTON_HEIGHT + 25.0);

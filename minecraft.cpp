@@ -21,6 +21,9 @@ int main()
     // where done on the settings screen goes back to, the main menu or the paused game
     GameScreen settings_return_screen = SCREEN_MAIN_MENU;
 
+    // which page of settings is showing, stays on the last one used
+    int settings_page = 0;
+
     // the worlds you can pick on the world select screen, read from the saves folder
     SaveSlots save_slots = load_save_slots();
 
@@ -232,11 +235,11 @@ int main()
 
         if (screen == SCREEN_SETTINGS)
         {
-            SettingsMenu settings_menu = make_settings_menu(settings);
+            SettingsMenu settings_menu = make_settings_menu(settings, settings_page);
             draw_settings_menu(settings_menu);
             refresh_screen(chosen_fps_cap(settings));
 
-            if (handle_settings_menu(settings_menu, settings))
+            if (handle_settings_menu(settings_menu, settings, settings_page))
             {
                 // saved once when leaving, instead of on every click
                 save_settings(settings);
@@ -322,10 +325,16 @@ int main()
         // first, it clears the screen and the sun and moon go behind everything
         draw_sky(view_cam, time_of_day);
 
-        draw_world_solid(view_cam, cam, world, see_through, time_of_day, frame_timer);
+        int faces_drawn = draw_world_solid(view_cam, cam, world, see_through, time_of_day, settings, frame_timer);
 
         // after the world so it covers all of it, before the crosshair and hud
         draw_underwater_tint(view_cam, world);
+
+        // only from the debug camera, from the player's own eye the lines would just be the screen's edges
+        if (is_camera_detached && is_on(settings, SETTING_SHOW_FRUSTUM))
+        {
+            draw_player_frustum(view_cam, cam);
+        }
 
         // crosshair
         fill_circle(COLOR_WHITE, screen_width() / 2.0, screen_height() / 2.0, 2);
@@ -348,9 +357,15 @@ int main()
 
         // last, so it's drawn on top of everything
         update_fps_counter(fps_counter);
-        if (is_fps_shown(settings))
+        if (is_on(settings, SETTING_SHOW_FPS))
         {
             draw_fps_counter(fps_counter);
+        }
+
+        // the player's camera, so it shows where the player is even from the debug camera
+        if (is_on(settings, SETTING_DEBUG_INFO))
+        {
+            draw_debug_info(cam, faces_drawn, time_of_day);
         }
 
         double present_start = time_now_ms();

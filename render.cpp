@@ -568,6 +568,42 @@ bool block_in_frustum(const Frustum &f, int x, int y, int z)
     return true;
 }
 
+/**
+ * shows frustum culling from the debug camera: 4 lines from the player's eye out along
+ * the corners of their view, joined at the far end into a rectangle.
+ * blocks outside these lines are the ones frustum culling skips.
+ * each corner direction is forward plus the slopes along right and up, which is
+ * exactly the slanted walls block_in_frustum tests against.
+ * the far end is RENDER_DISTANCE ahead, roughly where blocks stop being drawn
+ */
+void draw_player_frustum(const Camera &view_cam, const Camera &player_cam)
+{
+    Frustum f = make_frustum(player_cam);
+    double distance = RENDER_DISTANCE;
+
+    // which side each corner is on: top left, top right, bottom right, bottom left.
+    // going round in order so joining each one to the next draws the rectangle
+    const double SIDE_X[4] = {-1.0, 1.0, 1.0, -1.0};
+    const double SIDE_Y[4] = {1.0, 1.0, -1.0, -1.0};
+
+    Vector3 far_corners[4];
+    for (int i = 0; i < 4; i++)
+    {
+        double right_amount = SIDE_X[i] * f.slope_x;
+        double up_amount = SIDE_Y[i] * f.slope_y;
+
+        far_corners[i] = {f.position.x + (f.forward.x + f.right.x * right_amount + f.up.x * up_amount) * distance,
+                          f.position.y + (f.forward.y + f.right.y * right_amount + f.up.y * up_amount) * distance,
+                          f.position.z + (f.forward.z + f.right.z * right_amount + f.up.z * up_amount) * distance};
+    }
+
+    for (int i = 0; i < 4; i++)
+    {
+        draw_3d_line(view_cam, f.position, far_corners[i], COLOR_RED);
+        draw_3d_line(view_cam, far_corners[i], far_corners[(i + 1) % 4], COLOR_RED);
+    }
+}
+
 // ============================================================
 // SKY (day and night, sun and moon)
 // ============================================================
@@ -790,9 +826,14 @@ color shade_colour(color base, double factor)
 /**
  * fills the list with every face that the camera is facing
  */
-void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const World &world, FaceList &faces)
+void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const World &world, const Settings &settings, FaceList &faces)
 {
     faces.size = 0;
+
+    // each kind of culling can be turned off in the debug settings to show what it saves
+    bool use_frustum_culling = is_on(settings, SETTING_FRUSTUM_CULLING);
+    bool use_back_face_culling = is_on(settings, SETTING_BACK_FACE_CULLING);
+    bool use_hidden_face_culling = is_on(settings, SETTING_HIDDEN_FACE_CULLING);
 
     Frustum frustum = make_frustum(cull_cam);
 
@@ -817,7 +858,7 @@ void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const
 
                 // whole block is outside the player's view, so skip it before
                 // building its corners, testing its faces, or adding to the sort
-                if (!block_in_frustum(frustum, x, y, z))
+                if (use_frustum_culling && !block_in_frustum(frustum, x, y, z))
                 {
                     continue;
                 }
@@ -831,12 +872,13 @@ void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const
                 for (int f = 0; f < NUM_FACES; f++)
                 {
                     // checked before back face culling because its only one array lookup
-                    if (is_face_hidden(world, x, y, z, f))
+                    if (use_hidden_face_culling && is_face_hidden(world, x, y, z, f))
                     {
                         continue;
                     }
 
-                    if (is_double_sided || is_face_visible(cull_cam, c, f))
+                    // with back face culling off every face counts as facing the camera
+                    if (is_double_sided || !use_back_face_culling || is_face_visible(cull_cam, c, f))
                     {
                         // list full, so stop adding
                         if (faces.size >= MAX_VISIBLE_FACES)
@@ -880,7 +922,7 @@ void sort_faces_far_to_close(FaceList &faces)
 
 // projects one face to the screen, cutting off any part behind the near wall
 // see_through draws it at half opacity, so hidden faces behind it show
-void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int z, BlockType type, int face, bool see_through, double light, FrameTimer &timer)
+void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int z, BlockType type, int face, bool see_through, double light, bool show_outlines, FrameTimer &timer)
 {
     // everything up to the fill is our own maths, timed as project
     double project_start = time_now_ms();
@@ -982,36 +1024,42 @@ void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int
     // wall, which isnt a real edge of the block.
     // shade_colour keeps fill's alpha, so outlines go see-through too
     color outline = shade_colour(fill, 0.6);
-    for (int i = 0; i < 4; i++)
+
+    // off by default because drawing 4 lines per face is slow
+    if (show_outlines)
     {
-        int next = (i + 1) % 4;
-        Vector3 start = c.points[FACE_CORNERS[face][i]];
-        Vector3 end = c.points[FACE_CORNERS[face][next]];
-
-        // debug camera: cut the edge along the player's near wall too, so
-        // the outline matches the cut face. skip it if it's all behind
-        if (is_debug_view && !clip_world_line_to_near_plane(cull_cam, start, end))
+        for (int i = 0; i < 4; i++)
         {
-            continue;
-        }
+            int next = (i + 1) % 4;
+            Vector3 start = c.points[FACE_CORNERS[face][i]];
+            Vector3 end = c.points[FACE_CORNERS[face][next]];
 
-        // draw_3d_line(view_cam, start, end, outline);
+            // debug camera: cut the edge along the player's near wall too, so
+            // the outline matches the cut face. skip it if it's all behind
+            if (is_debug_view && !clip_world_line_to_near_plane(cull_cam, start, end))
+            {
+                continue;
+            }
+
+            draw_3d_line(view_cam, start, end, outline);
+        }
     }
 
     add_stage_time(timer, STAGE_OUTLINE, outline_start);
 }
 
-// collect then sort then draw far to near
-void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const World &world, bool see_through, double time_of_day, FrameTimer &timer)
+// collect then sort then draw far to near, returns how many faces there were for the debug info
+int draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const World &world, bool see_through, double time_of_day, const Settings &settings, FrameTimer &timer)
 {
     // the same for every face this frame, so it's only worked out once
     double light = block_light(time_of_day);
+    bool show_outlines = is_on(settings, SETTING_OUTLINES);
 
     // made fresh every frame because the camera moves, so which faces are are visible and their order changes each frame
     FaceList faces;
 
     double collect_start = time_now_ms();
-    collect_visible_faces(view_cam, cull_cam, world, faces);
+    collect_visible_faces(view_cam, cull_cam, world, settings, faces);
     add_stage_time(timer, STAGE_COLLECT, collect_start);
 
     double sort_start = time_now_ms();
@@ -1026,8 +1074,10 @@ void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const Worl
         FaceRef f = faces.data[i];
         // look the type up here: the cell must still hold a block, because
         // nothing changes the world between collecting and drawing
-        draw_face(view_cam, cull_cam, f.x, f.y, f.z, get_block(world, f.x, f.y, f.z), f.face, see_through, light, timer);
+        draw_face(view_cam, cull_cam, f.x, f.y, f.z, get_block(world, f.x, f.y, f.z), f.face, see_through, light, show_outlines, timer);
     }
+
+    return faces.size;
 }
 
 /**
@@ -1083,4 +1133,41 @@ void update_fps_counter(FpsCounter &counter)
 void draw_fps_counter(const FpsCounter &counter)
 {
     draw_text("FPS: " + std::to_string((int)counter.fps), COLOR_WHITE, 10, 10);
+}
+// a number as at least 2 digits, 7 -> "07", for the clock
+string two_digits(int number)
+{
+    if (number < 10)
+    {
+        return "0" + std::to_string(number);
+    }
+    return std::to_string(number);
+}
+
+/**
+ * small text under the fps counter, in the same built in font.
+ * faces shows how close the list is to full, so turning culling off shows why it's needed.
+ * time is shown as a clock: time_of_day 0 is sunrise, so 6:00 is added on
+ */
+void draw_debug_info(const Camera &cam, int faces_drawn, double time_of_day)
+{
+    string faces = "Faces: " + std::to_string(faces_drawn) + " / " + std::to_string(MAX_VISIBLE_FACES);
+
+    // the list filled up, so some faces that should be drawn are missing
+    if (faces_drawn >= MAX_VISIBLE_FACES)
+    {
+        faces += " FULL";
+    }
+
+    string block = "Block: " + std::to_string((int)floor(cam.position.x)) + " " +
+                   std::to_string((int)floor(cam.position.y)) + " " +
+                   std::to_string((int)floor(cam.position.z));
+
+    // minutes since midnight, 1440 in a day. % 1440 wraps it past midnight
+    int minutes = ((int)(time_of_day * 1440.0) + 6 * 60) % 1440;
+    string clock = "Time: " + two_digits(minutes / 60) + ":" + two_digits(minutes % 60);
+
+    draw_text(faces, COLOR_WHITE, 10, 25);
+    draw_text(block, COLOR_WHITE, 10, 40);
+    draw_text(clock, COLOR_WHITE, 10, 55);
 }
