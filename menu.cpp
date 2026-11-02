@@ -438,6 +438,55 @@ void draw_main_menu(const MainMenu &menu)
     draw_button(menu.exit);
 }
 
+// every key and what it does, listed on the pause menu.
+// first half goes in the left column (moving and the mouse), second half in the right (toggles)
+const int NUM_CONTROLS = 12;
+const string CONTROLS[NUM_CONTROLS] = {
+    "WASD - move",
+    "Space - jump/fly up",
+    "Shift - fly down",
+    "Mouse - look",
+    "Left click - break",
+    "Right click - place",
+    "1-7 - pick block",
+    "F - fly",
+    "C - debug camera",
+    "X - see-through",
+    "F11 - fullscreen",
+    "Esc - pause/resume"};
+
+// smaller than the labels so all 6 rows fit under the buttons
+const int CONTROLS_SIZE = 12;
+const double CONTROLS_LINE_HEIGHT = 20.0;
+
+// left edge of one column to the left edge of the next, the longest line is about 230 wide
+const double CONTROLS_COLUMN_WIDTH = 250.0;
+
+/**
+ * a "Controls" heading, then two columns of 6 under it.
+ * draw_text instead of draw_centred_text so each column lines up on its left edge
+ */
+void draw_controls(double top_y)
+{
+    double centre_x = screen_width() / 2.0;
+
+    draw_centred_text("Controls", COLOR_WHITE, LABEL_SIZE, centre_x, top_y);
+
+    int rows = NUM_CONTROLS / 2;
+
+    // the two columns together are 2 column widths wide, so starting one width left of centre centres them
+    double left_x = centre_x - CONTROLS_COLUMN_WIDTH;
+    double first_line_y = top_y + CONTROLS_LINE_HEIGHT;
+
+    for (int i = 0; i < NUM_CONTROLS; i++)
+    {
+        int column = i / rows; // 0 for the first 6, 1 for the rest
+        int row = i % rows;    // 0 to 5 down each column
+
+        draw_text(CONTROLS[i], COLOR_WHITE, MENU_FONT, CONTROLS_SIZE, left_x + column * CONTROLS_COLUMN_WIDTH, first_line_y + row * CONTROLS_LINE_HEIGHT);
+    }
+}
+
 /**
  * drawn over the world instead of clearing the screen
  * pause menu darkens bg gameplay
@@ -450,6 +499,9 @@ void draw_pause_menu(const PauseMenu &menu)
 
     draw_button(menu.resume);
     draw_button(menu.quit_to_title);
+
+    // one gap under the last button
+    draw_controls(menu.quit_to_title.area.y + BUTTON_HEIGHT + BUTTON_GAP);
 }
 
 void draw_world_select_menu(const WorldSelectMenu &menu)
