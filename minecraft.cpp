@@ -99,6 +99,9 @@ int main()
                 // building takes a moment, so show something instead of a frozen menu
                 draw_loading_screen();
 
+                // the last world is still in memory if you quit to title, empty it first
+                clear_world(world);
+
                 if (USE_SUPERFLAT)
                 {
                     build_superflat(world, SUPERFLAT_SIZE);
@@ -108,15 +111,17 @@ int main()
                     build_terrain(world, WORLD_SEED);
                 }
 
+                // start fresh, nothing carried over from the last world
                 cam.position = find_spawn(world);
+                cam.yaw = 0.0;
+                cam.pitch = 0.0;
+                player.velocity_y = 0.0;
+                player.on_ground = false;
+                player.is_flying = false;
+                is_camera_detached = false;
 
-                // lock the cursor for playing, same as pressing escape in game.
-                // mouse_movement throws away everything the mouse did on the menu,
-                // otherwise the camera spins on the first frame
-                is_cursor_locked = true;
-                hide_mouse();
-                move_mouse(screen_width() / 2.0, screen_height() / 2.0);
-                mouse_movement();
+                // throws away any mouse movements from before to stop mouse movement on the first frame
+                lock_cursor(is_cursor_locked);
 
                 // building took a while, so time the next frame from now not from before it
                 last_frame_ms = time_now_ms();
@@ -140,6 +145,8 @@ int main()
         handle_camera_detach_toggle(is_camera_detached, debug_cam, cam);
         handle_block_select(selected_block);
 
+        PauseMenu pause_menu = make_pause_menu();
+
         // escape unlocks the cursor and pauses: nothing moves, no gravity,
         // no breaking or placing until the cursor is locked again.
         // only one camera is controlled at a time. while detached the
@@ -161,6 +168,22 @@ int main()
                 handle_block_place(cam, world, selected_block);
             }
         }
+        else
+        {
+            // paused, the mouse is for the pause menu's buttons
+            PauseChoice pause_choice = pause_menu_choice(pause_menu);
+
+            if (pause_choice == PAUSE_RESUME)
+            {
+                lock_cursor(is_cursor_locked);
+            }
+            else if (pause_choice == PAUSE_QUIT_TO_TITLE)
+            {
+                // the cursor is already unlocked, which the main menu needs
+                screen = SCREEN_MAIN_MENU;
+                continue;
+            }
+        }
 
         // drawing
         clear_screen(COLOR_SKY_BLUE);
@@ -172,7 +195,6 @@ int main()
             view_cam = debug_cam;
         }
 
-        draw_grid(view_cam, 20);
         draw_world_solid(view_cam, cam, world, see_through, frame_timer);
 
         // after the world so it covers all of it, before the crosshair and hud
@@ -184,6 +206,12 @@ int main()
         // TEMPORARY: small square in the bottom left showing the selected block's
         // colour, so you can tell what you're holding. a proper hotbar comes later
         fill_rectangle(block_colour(selected_block), 10, screen_height() - 40, 30, 30);
+
+        // over the world and hud, under the fps counter
+        if (!is_cursor_locked)
+        {
+            draw_pause_menu(pause_menu);
+        }
 
         // last, so it's drawn on top of everything
         update_fps_counter(fps_counter);

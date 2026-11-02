@@ -125,6 +125,9 @@ BlockType get_block(const World &world, int x, int y, int z);
 // sets a block type at given coordinates
 void set_block(World &world, int x, int y, int z, BlockType type);
 
+// sets all blocks in the world to air
+void clear_world(World &world);
+
 // can this block be stood on, collided with and hit by the crosshair (air and water can't)
 bool is_solid(BlockType type);
 

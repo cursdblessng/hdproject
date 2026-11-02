@@ -51,6 +51,19 @@ MainMenu make_main_menu()
     return menu;
 }
 
+// same layout as main menu so buttons sit in the same place
+PauseMenu make_pause_menu()
+{
+    double centre_x = screen_width() / 2.0;
+    double first_y = screen_height() / 2.0;
+    double spacing = BUTTON_HEIGHT + BUTTON_GAP;
+
+    PauseMenu menu;
+    menu.resume = make_button("Resume", centre_x, first_y);
+    menu.quit_to_title = make_button("Quit to Title", centre_x, first_y + spacing);
+    return menu;
+}
+
 bool is_mouse_over(const Button &button)
 {
     return point_in_rectangle(mouse_position(), button.area);
@@ -77,6 +90,19 @@ MenuChoice main_menu_choice(const MainMenu &menu)
         return MENU_EXIT;
     }
     return MENU_NONE;
+}
+
+PauseChoice pause_menu_choice(const PauseMenu &menu)
+{
+    if (button_clicked(menu.resume))
+    {
+        return PAUSE_RESUME;
+    }
+    if (button_clicked(menu.quit_to_title))
+    {
+        return PAUSE_QUIT_TO_TITLE;
+    }
+    return PAUSE_NONE;
 }
 
 /**
@@ -117,6 +143,20 @@ void draw_main_menu(const MainMenu &menu)
     draw_button(menu.play);
     draw_button(menu.settings);
     draw_button(menu.exit);
+}
+
+/**
+ * drawn over the world instead of clearing the screen
+ * pause menu darkens bg gameplay
+ */
+void draw_pause_menu(const PauseMenu &menu)
+{
+    fill_rectangle(rgba_color(0,0,0,120), 0, 0, screen_width(), screen_height());
+
+    draw_centred_text("Game Paused", COLOR_WHITE, TITLE_SIZE, screen_width() / 2.0, screen_height() / 4.0);
+
+    draw_button(menu.resume);
+    draw_button(menu.quit_to_title);
 }
 
 /**

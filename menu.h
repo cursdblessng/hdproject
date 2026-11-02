@@ -34,6 +34,30 @@ struct MainMenu
     Button exit;
 };
 
+// what was clicked on the pause menu this frame, PAUSE_MENU if nothing
+enum PauseChoice
+{
+    PAUSE_NONE,
+    PAUSE_RESUME,
+    PAUSE_QUIT_TO_TITLE
+};
+
+// every button on the pause menu
+struct PauseMenu
+{
+    Button resume;
+    Button quit_to_title;
+};
+
+// buttons laid out for the current window size
+PauseMenu make_pause_menu();
+
+// which button was clicked this frame
+PauseChoice pause_menu_choice(const PauseMenu &menu);
+
+// darkens the world and draws the title and buttons over it
+void draw_pause_menu(const PauseMenu &menu);
+
 // loads the menu font, call once after opening the window
 void load_menu_font();
 

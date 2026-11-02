@@ -131,6 +131,25 @@ void set_block(World &world, int x, int y, int z, BlockType type)
     world.chunks[x / CHUNK_SIZE][z / CHUNK_SIZE].blocks[x % CHUNK_SIZE][y][z % CHUNK_SIZE] = type;
 }
 
+/**
+ * sets every block to air
+ * build functions only set blocks that are not air
+ * so without this, the newly generated worlds would generate on top of old ones
+ */
+void clear_world(World &world)
+{
+    for (int x = 0; x < WORLD_SIZE; x++)
+    {
+        for (int y = 0; y < WORLD_HEIGHT; y++)
+        {
+            for (int z = 0; z < WORLD_SIZE; z++)
+            {
+                set_block(world, x, y, z, AIR);
+            }
+        }
+    }
+}
+
 // works out the 8 corner positions of a block
 CubeCorners get_block_corners(int x, int y, int z)
 {

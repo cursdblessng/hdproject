@@ -21,6 +21,9 @@ void handle_movement(Camera &cam, Player &player, const World &world, double dt)
 // mouse look, only called when the cursor is locked
 void handle_mouse_look(Camera &cam, double mouse_sensitivity);
 
+// hides the mouse and locks it to the middle, for playing
+void lock_cursor(bool &is_cursor_locked);
+
 // escape key toggles whether or not cursor is locked
 void handle_cursor_toggle(bool &is_cursor_locked);
 

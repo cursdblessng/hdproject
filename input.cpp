@@ -272,22 +272,31 @@ void handle_mouse_look(Camera &cam, double mouse_sensitivity)
     move_mouse(screen_width() / 2.0, screen_height() / 2.0);
 }
 
+/**
+ * hides the mouse and keeps it in the middle for mouse look
+ * used by escape, play and resume
+ */
+void lock_cursor(bool &is_cursor_locked)
+{
+    is_cursor_locked = true;
+    hide_mouse();
+    move_mouse(screen_width() / 2.0, screen_height() / 2.0);
+    mouse_movement(); // removes the jump caused by re entering game
+}
+
 // escape key toggles whether or not cursor is locked
 void handle_cursor_toggle(bool &is_cursor_locked)
 {
     if (key_typed(ESCAPE_KEY))
     {
-        is_cursor_locked = !is_cursor_locked;
-
         if (is_cursor_locked)
         {
-            hide_mouse();
-            move_mouse(screen_width() / 2.0, screen_height() / 2.0);
-            mouse_movement(); // removes the jump caused by re entering game
+            is_cursor_locked = false;
+            show_mouse();
         }
         else
         {
-            show_mouse();
+            lock_cursor(is_cursor_locked);
         }
     }
 }
