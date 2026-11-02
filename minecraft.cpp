@@ -23,6 +23,9 @@ int main()
     // opens on the main menu, the world is built when a slot is picked
     GameScreen screen = SCREEN_MAIN_MENU;
 
+    // what has been typed and picked on the create world screen, reset when an empty slot is clicked
+    CreateWorldForm create_form = make_create_world_form(0);
+
     Camera cam;
 
     cam.position = {0.0, 0.0, 0.0}; // moved to the spawn when a slot is picked
@@ -121,41 +124,57 @@ int main()
             {
                 int slot = select_choice.slot;
 
-                // TEMPORARY: an empty slot gets a default world, a random seed so each slot is different.
-                // the create world screen will replace this
-                if (!save_slots.slots[slot].is_used)
+                if (save_slots.slots[slot].is_used)
                 {
-                    save_slots.slots[slot].settings.name = "World " + std::to_string(slot + 1);
-                    save_slots.slots[slot].settings.seed = rnd(1000000);
-                    save_slots.slots[slot].settings.is_superflat = false;
-                    save_slots.slots[slot].is_used = true;
+                    start_world(world, save_slots.slots[slot].settings, cam, player, is_camera_detached, is_cursor_locked);
+
+                    // building took a while, so time the next frame from now not from before it
+                    last_frame_ms = time_now_ms();
+
+                    screen = SCREEN_PLAYING;
                 }
+                else
+                {
+                    // empty slot, so make a new world in it
+                    create_form = make_create_world_form(slot);
+                    screen = SCREEN_CREATE_WORLD;
+                }
+            }
+            else if (select_choice.action == SELECT_BACK)
+            {
+                screen = SCREEN_MAIN_MENU;
+            }
 
-                // building takes a moment, so show something instead of a frozen menu
-                draw_loading_screen();
+            // same as the main menu, nothing in the world runs here
+            continue;
+        }
 
-                build_world(world, save_slots.slots[slot].settings);
+        if (screen == SCREEN_CREATE_WORLD)
+        {
+            CreateWorldMenu create_menu = make_create_world_menu(create_form);
+            draw_create_world_menu(create_menu, create_form);
+            refresh_screen(TARGET_FPS);
 
-                // start fresh, nothing carried over from the last world
-                cam.position = find_spawn(world);
-                cam.yaw = 0.0;
-                cam.pitch = 0.0;
-                player.velocity_y = 0.0;
-                player.on_ground = false;
-                player.is_flying = false;
-                is_camera_detached = false;
+            CreateChoice create_choice = handle_create_world_menu(create_menu, create_form);
 
-                // throws away any mouse movements from before to stop mouse movement on the first frame
-                lock_cursor(is_cursor_locked);
+            if (create_choice == CREATE_CREATE)
+            {
+                // the slot is used from now on, and shows the world's name on the select screen
+                int slot = create_form.slot;
+                save_slots.slots[slot].settings = settings_from_form(create_form);
+                save_slots.slots[slot].is_used = true;
+
+                start_world(world, save_slots.slots[slot].settings, cam, player, is_camera_detached, is_cursor_locked);
 
                 // building took a while, so time the next frame from now not from before it
                 last_frame_ms = time_now_ms();
 
                 screen = SCREEN_PLAYING;
             }
-            else if (select_choice.action == SELECT_BACK)
+            else if (create_choice == CREATE_CANCEL)
             {
-                screen = SCREEN_MAIN_MENU;
+                // the slot stays empty
+                screen = SCREEN_WORLD_SELECT;
             }
 
             // same as the main menu, nothing in the world runs here

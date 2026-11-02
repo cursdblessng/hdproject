@@ -3,12 +3,14 @@
 
 #include "splashkit.h"
 #include "world.h"
+#include "input.h"
 
 // which screen main is showing, decides what each frame does
 enum GameScreen
 {
     SCREEN_MAIN_MENU,
     SCREEN_WORLD_SELECT,
+    SCREEN_CREATE_WORLD,
     SCREEN_PLAYING
 };
 
@@ -105,3 +107,59 @@ WorldSelectChoice world_select_choice(const WorldSelectMenu &menu);
 
 // title and buttons over the whole screen
 void draw_world_select_menu(const WorldSelectMenu &menu);
+
+// which text box is being typed in
+enum TextField
+{
+    FIELD_NONE,
+    FIELD_NAME,
+    FIELD_SEED
+};
+
+// what's been entered on the create world screen so far.
+// kept in main because typing carries on over many frames
+struct CreateWorldForm
+{
+    int slot;               // which save slot the new world goes in
+    string name;            // blank = "World" and the slot number
+    string seed_text;       // blank = random seed
+    bool is_superflat;
+    TextField active_field; // which box is being typed in, FIELD_NONE if neither
+};
+
+// what was clicked on the create world screen
+enum CreateChoice
+{
+    CREATE_NONE,
+    CREATE_CREATE,
+    CREATE_CANCEL
+};
+
+// every box and button on the create world screen.
+// the text boxes are Buttons so they're clicked the same way, their label is the typed text
+struct CreateWorldMenu
+{
+    Button name_box;
+    Button seed_box;
+    Button type;
+    Button create;
+    Button cancel;
+};
+
+// a blank form for a new world in this slot
+CreateWorldForm make_create_world_form(int slot);
+
+// boxes and buttons laid out for the current window size, labelled from the form
+CreateWorldMenu make_create_world_menu(const CreateWorldForm &form);
+
+// the settings a finished form makes, blank boxes filled with their defaults
+WorldSettings settings_from_form(const CreateWorldForm &form);
+
+// typing, clicking boxes and the type button. returns create or cancel when clicked
+CreateChoice handle_create_world_menu(const CreateWorldMenu &menu, CreateWorldForm &form);
+
+// title, labels, boxes and buttons over the whole screen
+void draw_create_world_menu(const CreateWorldMenu &menu, const CreateWorldForm &form);
+
+// builds the world and puts the player in it, for a new or an existing world
+void start_world(World &world, const WorldSettings &settings, Camera &cam, Player &player, bool &is_camera_detached, bool &is_cursor_locked);
