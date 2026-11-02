@@ -1,4 +1,5 @@
-// main menu: title, buttons, and which screen the game is on
+// every menu screen (main, world select, create world, delete world, settings, pause),
+// the buttons they're made of, and which screen the game is on
 #pragma once
 
 #include "splashkit.h"
@@ -17,7 +18,7 @@ enum GameScreen
     SCREEN_PLAYING
 };
 
-// what was selected by the user
+// what was clicked on the main menu this frame, MENU_NONE if nothing
 enum MenuChoice
 {
     MENU_NONE,
@@ -82,7 +83,7 @@ void draw_main_menu(const MainMenu &menu);
 // shown while the world builds, so the game doesn't look frozen
 void draw_loading_screen(const string &message);
 
-// what was clicked on world select screen
+// what was clicked on the world select screen
 enum WorldSelectAction
 {
     SELECT_NONE,
@@ -198,6 +199,7 @@ void draw_delete_menu(const DeleteMenu &menu, const string &world_name);
 
 // red dot and "DEBUG CAMERA" in the bottom right corner, drawn while the camera is detached
 void draw_debug_cam_label();
+
 // one button per setting showing its current option, then done and a button to switch page.
 // only the settings on the current page are laid out, drawn and clicked
 struct SettingsMenu
@@ -215,5 +217,5 @@ SettingsMenu make_settings_menu(const Settings &settings, int page);
 // true when done is clicked
 bool handle_settings_menu(const SettingsMenu &menu, Settings &settings, int &page);
 
-// title, each setting's name next to its button, and done, over the whole screen
+// title, each setting's name next to its button, done and the page button, over the whole screen
 void draw_settings_menu(const SettingsMenu &menu);

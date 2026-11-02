@@ -78,7 +78,8 @@ PauseMenu make_pause_menu()
 }
 
 /**
- * used slot shows world name, empty slot says empty
+ * used slot shows world name, empty slot says empty.
+ * every slot gets an X square, but only used slots have can_delete set, so empty ones never show or click it
  */
 WorldSelectMenu make_world_select_menu(const SaveSlots &save_slots)
 {
@@ -175,6 +176,7 @@ SettingsMenu make_settings_menu(const Settings &settings, int page)
     return menu;
 }
 
+// a blank form for a new world in this slot, normal generation and no box being typed in
 CreateWorldForm make_create_world_form(int slot)
 {
     CreateWorldForm form;
@@ -789,8 +791,8 @@ void draw_create_world_menu(const CreateWorldMenu &menu, const CreateWorldForm &
 }
 
 /**
- * refreshes the screen itself because building the world straight after
- * stops the loop, so main never gets to refresh until it's done
+ * refreshes the screen itself because loading, building or saving the world straight after
+ * holds up the loop, so main never gets to refresh until it's done
  */
 void draw_loading_screen(const string &message)
 {

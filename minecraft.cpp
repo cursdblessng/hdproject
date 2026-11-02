@@ -11,8 +11,8 @@ int main()
     open_window("Voxel Engine", WINDOWED_WIDTH, WINDOWED_HEIGHT);
     load_menu_font();
 
-    // the entire world
-    // not stored on the 1mb stack
+    // the entire world, 32 mb
+    // static so it isn't stored on the 1 mb stack
     static World world;
 
     // the player's settings, read from settings.txt or the defaults if there isn't one
@@ -24,13 +24,13 @@ int main()
     // which page of settings is showing, stays on the last one used
     int settings_page = 0;
 
-    // the worlds you can pick on the world select screen, read from the saves folder
+    // the worlds you can pick on the world select screen, read from the save files
     SaveSlots save_slots = load_save_slots();
 
     // which slot is being played, so quitting knows where to save. set when a world is started
     int current_slot = 0;
 
-    // opens on the main menu, the world is built when a slot is picked
+    // opens on the main menu, the world is loaded or built when a slot is picked
     GameScreen screen = SCREEN_MAIN_MENU;
 
     // what has been typed and picked on the create world screen, reset when an empty slot is clicked
@@ -59,7 +59,7 @@ int main()
     player.on_ground = false; // spawns in the air
     player.is_flying = false;
 
-    // which block right click places, changed with keys 1-6
+    // which block right click places, changed with keys 1-7
     BlockType selected_block = GRASS;
 
     // debug view: half transparent faces, toggled with x
@@ -148,7 +148,7 @@ int main()
                     start_world(slot, save_slots.slots[slot].settings, world, cam, player, is_camera_detached, is_cursor_locked);
                     current_slot = slot;
 
-                    // building took a while, so time the next frame from now not from before it
+                    // loading took a while, so time the next frame from now not from before it
                     last_frame_ms = time_now_ms();
 
                     screen = SCREEN_PLAYING;
@@ -278,7 +278,7 @@ int main()
                 handle_movement(cam, player, world, dt);
                 handle_mouse_look(cam, chosen_sensitivity(settings));
 
-                // after mouse look, so the ray uses where you're looking THIS frame
+                // after mouse look, so the ray uses where you're looking this frame
                 handle_block_break(cam, world);
                 handle_block_place(cam, world, selected_block);
             }
@@ -322,7 +322,7 @@ int main()
             view_cam = debug_cam;
         }
 
-        // first, it clears the screen and the sun and moon go behind everything
+        // drawn first: it clears the screen, and the sun and moon end up behind the world
         draw_sky(view_cam, time_of_day);
 
         int faces_drawn = draw_world_solid(view_cam, cam, world, see_through, time_of_day, settings, frame_timer);
@@ -376,6 +376,7 @@ int main()
 
         end_timed_frame(frame_timer);
     }
+
     // closing the window while playing saves too, so nothing is lost
     if (screen == SCREEN_PLAYING)
     {

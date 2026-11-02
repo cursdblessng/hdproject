@@ -52,7 +52,7 @@ void start_timed_frame(FrameTimer &timer)
 /**
  * counts the frame, then about once a second prints each stage's average per frame.
  * averaged over a second because single frames jump around too much to read.
- * other = whole frame minus every timed stage: input, clear_screen, the grid, the hud.
+ * other = whole frame minus every timed stage: input, the sky, the hud.
  * fflush because the msys2 terminal holds printf output back until there's a lot of it,
  * so without it nothing shows up while the game is running
  */

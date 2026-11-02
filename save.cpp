@@ -16,6 +16,7 @@ string slot_path(int slot, const string &extension)
 {
     return SAVE_FILE_PREFIX + std::to_string(slot + 1) + extension;
 }
+
 /**
  * one run is two bytes: how many blocks in a row, then which type.
  * put writes a single byte, so no pointers are needed
@@ -149,6 +150,10 @@ void save_world(int slot, const WorldSettings &settings, const World &world, con
     file << player.is_flying << "\n";
 }
 
+/**
+ * reads the .txt in the same order save_world wrote it, then the blocks.
+ * false if either file is missing or something couldn't be read
+ */
 bool load_world(int slot, World &world, Camera &cam, Player &player)
 {
     std::ifstream file(slot_path(slot, ".txt"));
@@ -208,6 +213,7 @@ SaveSlots load_save_slots()
 
     return save_slots;
 }
+
 // one number per line, the chosen option for each setting in SettingId order
 void save_settings(const Settings &settings)
 {

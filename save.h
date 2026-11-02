@@ -1,4 +1,5 @@
-// saving and loading worlds: each slot is a .txt (settings and player) and a .bin (blocks)
+// saving and loading: each world slot is a .txt (settings and player) and a .bin (blocks),
+// and the player's settings go in settings.txt
 #pragma once
 
 #include "world.h"
@@ -17,6 +18,7 @@ void delete_world(int slot);
 
 // which slots have a saved world and what they're called, read when the game opens
 SaveSlots load_save_slots();
+
 // writes the chosen option for every setting to settings.txt
 void save_settings(const Settings &settings);
 

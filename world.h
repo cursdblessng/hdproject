@@ -1,4 +1,4 @@
-// core data types shared by every file, plus building the world
+// core types shared by every file, the block grid, terrain generation, collision and the raycast
 #pragma once
 
 #include "splashkit.h"
@@ -18,8 +18,9 @@ struct Vector2
 };
 
 /**
- * all block types, air is for empty array slot
- * new world is all air
+ * every block type, air is an empty cell.
+ * uint8_t so each block is 1 byte, which keeps the world at 32 mb.
+ * saves store these numbers, so new types go on the end, otherwise blocks in old saves would load as a different type
  */
 enum BlockType:uint8_t
 {
@@ -35,20 +36,20 @@ enum BlockType:uint8_t
 
 struct Camera
 {
-    Vector3 position;
-    double yaw;   // rotation for left right
-    double pitch; // rotation for up down
-    double fov;
+    Vector3 position; // the eye, for the player this is 1.62 above their feet
+    double yaw;       // turning left and right, in radians
+    double pitch;     // looking up and down in radians, positive = looking down
+    double fov;       // how wide the view is left to right, in radians
 };
 
-const int CHUNK_SIZE = 16; // chunk is 16 x 16 blocks
-const int WORLD_HEIGHT = 128; // nothing can be placed after 127
-const int WORLD_CHUNKS = 32; // world is 32 x 32 chunks, 1024
-const int WORLD_SIZE = CHUNK_SIZE * WORLD_CHUNKS; // 512 blocks x 512 blocks
+const int CHUNK_SIZE = 16;                        // a chunk is 16 x 16 blocks across
+const int WORLD_HEIGHT = 128;                     // y goes from 0 to 127
+const int WORLD_CHUNKS = 32;                      // the world is 32 x 32 chunks, 1024 in total
+const int WORLD_SIZE = CHUNK_SIZE * WORLD_CHUNKS; // 512 x 512 blocks across
 
 /**
- * 1 chunk is 16 x 128 x 16 blocks
- * blocks[x][y][z]
+ * 16 x 128 x 16 blocks, the full height of the world
+ * blocks[x][y][z], with x and z from 0 to 15 inside the chunk
  */
 struct Chunk
 {
@@ -56,7 +57,8 @@ struct Chunk
 };
 
 /**
- * 32 x 32 chunks
+ * 32 x 32 chunks, 512 x 128 x 512 blocks.
+ * 32 mb, much bigger than the 1 mb stack, so main makes it static
  */
 struct World
 {
@@ -77,7 +79,7 @@ const int NUM_SAVE_SLOTS = 3;
 // one save slot on the world select screen
 struct SaveSlot
 {
-    bool is_used;
+    bool is_used;           // false = empty slot, settings are left over and mean nothing
     WorldSettings settings;
 };
 
@@ -87,8 +89,8 @@ struct SaveSlots
     SaveSlot slots[NUM_SAVE_SLOTS];
 };
 
-// the grid is at y = 0, treat it as solid ground: you stand on it and
-// can place blocks on it. used by collision (input.cpp) and the raycast (world.cpp)
+// the bottom of the world counts as solid ground: you can't fall through it
+// and blocks can be placed on it. used by collision (input.cpp) and the raycast (world.cpp)
 const double WORLD_FLOOR_Y = 0.0;
 
 // window size when not fullscreen. used when the window first opens and
@@ -112,10 +114,9 @@ struct CubeCorners
 };
 
 /**
- * an axis-aligned box: all the space between a min corner and a max corner
- * "axis-aligned" means its edges always run along x, y and z (never rotated),
- * which makes checking whether two boxes overlap very cheap
- * used for collision: a block is a 1x1x1 box, the player is 0.6 x 2 x 0.6
+ * all the space between a min corner and a max corner.
+ * its edges always run along x, y and z (never rotated), so checking if two overlap is cheap.
+ * used for collision: a block is 1 x 1 x 1, the player is 0.6 x 1.8 x 0.6
  */
 struct Box
 {
@@ -126,22 +127,22 @@ struct Box
 // what the crosshair ray found
 struct RayHit
 {
-    bool hit_block; // true if block is hit
-    int block_x, block_y, block_z; // coords of hit block
-    bool can_place; // true if ray hit a block within reach
-    int place_x, place_y, place_z; // empty coords the placed block will go to
+    bool hit_block;                // a solid block was hit within reach
+    int block_x, block_y, block_z; // the block that was hit
+    bool can_place;                // a block or the floor was hit within reach, so there's somewhere to place
+    int place_x, place_y, place_z; // the empty cell just in front of what was hit, where a new block goes
 };
 
-// picks display color for blocks
+// the colour a block type is drawn in
 color block_colour(BlockType type);
 
-// checks if given coordinates are in any world arrays
+// is this cell inside the world
 bool in_world(int x, int y, int z);
 
-// returns block type at given coordinates
+// the block in a cell, anything outside the world is air
 BlockType get_block(const World &world, int x, int y, int z);
 
-// sets a block type at given coordinates
+// changes the block in a cell, cells outside the world are ignored
 void set_block(World &world, int x, int y, int z, BlockType type);
 
 // sets all blocks in the world to air
@@ -153,12 +154,12 @@ bool is_solid(BlockType type);
 // works out the 8 corner positions of a block
 CubeCorners get_block_corners(int x, int y, int z);
 
-// fills the world with flat square. size x size, 5 blocks down
-// 1 grass, 2 dirt, 2 stone
+// a flat size x size square in the middle of the world, 5 blocks deep:
+// 2 stone, 2 dirt, 1 grass
 void build_superflat(World &world, int size);
 
-// fills the whole world with perlin noise hills from a seed:
-// stone, then dirt, then grass on top. same seed = same world
+// the whole world from perlin noise: plains, mountains, oceans, rivers, beaches and trees.
+// same seed = same world
 void build_terrain(World &world, unsigned int seed);
 
 // empties the world and builds it from its settings
@@ -173,10 +174,11 @@ bool boxes_overlap(const Box &a, const Box &b);
 // the space a block fills, from its min corner position to min corner + 1
 Box block_box(int x, int y, int z);
 
-// does this block overlap any active block? used for player collision
+// does this box overlap any solid block? used for player collision
 bool box_hits_world(const Box &box, const World &world);
 
 // what the crosshair is pointing at: which block, and where a new block would go
 RayHit raycast_block(const Camera &cam, const World &world);
+
 // moves the time of day (0 to 1, a whole day) on by dt seconds, back to 0 after a full day
 void advance_time(double &time_of_day, double day_length_seconds, double dt);

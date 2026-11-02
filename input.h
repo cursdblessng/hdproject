@@ -1,11 +1,11 @@
-// keyboard and mouse controls for the camera
+// keyboard and mouse controls: moving the player, looking, toggles, and breaking and placing blocks
 #pragma once
 
 #include "world.h"
 
 /**
  * movement state for the player that isnt stored in the camera
- * (the camera's position IS the players eyes, so position lives there)
+ * (the camera's position is the player's eyes, so position lives there)
  * kept between frames because gravity builds up speed over time
  */
 struct Player
@@ -15,7 +15,8 @@ struct Player
     bool is_flying;    // true = no gravity, space/shift move up and down
 };
 
-// wasd movement relative to where camera is facing, space/shift for up/down, dt = seconds since last frame
+// wasd movement relative to where the camera is facing, with gravity and collision.
+// space jumps, or flies up with shift for down. dt = seconds since last frame
 void handle_movement(Camera &cam, Player &player, const World &world, double dt);
 
 // mouse look, only called when the cursor is locked
@@ -24,7 +25,7 @@ void handle_mouse_look(Camera &cam, double mouse_sensitivity);
 // hides the mouse and locks it to the middle, for playing
 void lock_cursor(bool &is_cursor_locked);
 
-// escape key toggles whether or not cursor is locked
+// escape locks and unlocks the cursor, unlocked = paused
 void handle_cursor_toggle(bool &is_cursor_locked);
 
 // f toggles flying on/off
@@ -33,10 +34,10 @@ void handle_fly_toggle(Player &player);
 // left click breaks the block the crosshair is on
 void handle_block_break(const Camera &cam, World &world);
 
-// numbers 1-6 pick which block is placed
+// numbers 1-7 pick which block is placed
 void handle_block_select(BlockType &selected_block);
 
-// right click places the block against whatever crosshair is on
+// right click places the block against whatever the crosshair is on
 void handle_block_place(const Camera &cam, World &world, BlockType selected_block);
 
 // f11 toggles between fullscreen and windowed

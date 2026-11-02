@@ -1,8 +1,8 @@
 #include "input.h"
 #include "splashkit.h"
-#include <cmath> // sin, cos
+#include <cmath> // sin, cos, sqrt, ceil
 
-// player size, 0.6x1.8x0.6
+// player size, 0.6 x 1.8 x 0.6
 const double PLAYER_HEIGHT = 1.8; // 1.8 blocks tall
 const double PLAYER_WIDTH = 0.6;  // 0.6 blocks wide
 
@@ -34,6 +34,7 @@ const double MAX_FALL_SPEED = 50.0;
 // move_player would put you on the wrong surface (or through the floor)
 const double MAX_PHYSICS_STEP = 1.0 / 60.0;
 
+// the space the player takes up, worked out from where their eyes (the camera) are
 Box player_box(const Vector3 &eye)
 {
     // the box spreads out evenly either side of the eyes on x and z
@@ -161,9 +162,9 @@ Vector2 wasd_direction(const Camera &cam)
 
 /**
  * one short physics step of step_time seconds
- * speeds are per second so multiplying by step time gives how far to move that step
- * velocity changes by GRAVITY * step_time, falling builds up the same at any fps
- * direction worked out once per frame
+ * speeds are per second so multiplying by step_time gives how far to move this step
+ * velocity changes by GRAVITY * step_time, so falling builds up the same at any fps
+ * direction is worked out once per frame by handle_movement and passed in
  */
 void movement_step(Camera &cam, Player &player, const World &world, const Vector2 &direction, double step_time)
 {
@@ -242,22 +243,22 @@ void handle_movement(Camera &cam, Player &player, const World &world, double dt)
     }
 }
 
-// mouse look, only called when the cursor is locked
+/**
+ * mouse look, only called when the cursor is locked
+ * moving the mouse sideways turns (yaw), up and down looks up and down (pitch)
+ */
 void handle_mouse_look(Camera &cam, double mouse_sensitivity)
 {
     const double PI = 3.14159265358979323846;
 
-    // call mouse_movement once per frame and store the result
-    // it returns the movement since it was last called
-    // calling it a second time in the same frame returns (0,0)
-    // which was previously the issue
-
+    // mouse_movement gives how far the mouse moved since it was last called,
+    // so it's called once and stored. a second call this frame would give (0, 0)
     vector_2d movement = mouse_movement();
 
     cam.yaw -= movement.x * mouse_sensitivity;
     cam.pitch += movement.y * mouse_sensitivity;
 
-    // clamping pitch so the camera doesnt flip upside down
+    // clamping pitch to straight up and straight down so the camera doesnt flip upside down
     double pitch_limit = PI / 2.0;
     if (cam.pitch > pitch_limit)
     {
@@ -281,10 +282,12 @@ void lock_cursor(bool &is_cursor_locked)
     is_cursor_locked = true;
     hide_mouse();
     move_mouse(screen_width() / 2.0, screen_height() / 2.0);
-    mouse_movement(); // removes the jump caused by re entering game
+
+    // throws away everything the mouse did while unlocked, otherwise the camera jumps on the next frame
+    mouse_movement();
 }
 
-// escape key toggles whether or not cursor is locked
+// escape locks and unlocks the cursor. unlocked is the same as paused
 void handle_cursor_toggle(bool &is_cursor_locked)
 {
     if (key_typed(ESCAPE_KEY))
@@ -315,9 +318,7 @@ void handle_fly_toggle(Player &player)
 }
 
 /**
- * left click breaks the block under the crosshair.
- * breaking just sets that cell back to air: the grid has a slot for every
- * cell, so nothing needs removing or moving around like the old array.
+ * left click breaks the block under the crosshair by setting its cell back to air.
  * mouse_clicked (not mouse_down) so one click breaks one block, instead
  * of one block every frame the button is held
  */
@@ -327,8 +328,7 @@ void handle_block_break(const Camera &cam, World &world)
     {
         RayHit hit = raycast_block(cam, world);
 
-        // -1 means nothing to break (missed, or only hit the floor),
-        // and isn't a real index, so world.data[-1] would read outside the array
+        // false when the ray missed or only hit the floor, so there's nothing to break
         if (hit.hit_block)
         {
             set_block(world, hit.block_x, hit.block_y, hit.block_z, AIR);
@@ -337,10 +337,9 @@ void handle_block_break(const Camera &cam, World &world)
 }
 
 /**
- * number keys 1 to 6 choose which block type right click will place
+ * number keys 1 to 7 choose which block type right click will place,
  * in the same order as the BlockType enum.
- * key_down would work here
- * key_typed used to match other parts of the code
+ * key_down would also work here, key_typed matches the other toggles
  */
 void handle_block_select(BlockType &selected_block)
 {
@@ -375,10 +374,9 @@ void handle_block_select(BlockType &selected_block)
 }
 
 /**
- * right click places the selected block type against whatever the crosshair is on.
- * refuses to place a block that overlaps the player, because player would be stuck inside it.
- * add_block puts it at index 'size', which is exactly the slot breaking a block freed.
- * so breaking and placing doesnt waste slots in block array.
+ * right click places the selected block type against whatever the crosshair is on,
+ * in the empty cell just in front of it.
+ * refuses to place a block that overlaps the player, because they would be stuck inside it.
  */
 void handle_block_place(const Camera &cam, World &world, BlockType selected_block)
 {
@@ -392,6 +390,7 @@ void handle_block_place(const Camera &cam, World &world, BlockType selected_bloc
             return;
         }
 
+        // would be inside the player
         if (boxes_overlap(block_box(hit.place_x, hit.place_y, hit.place_z), player_box(cam.position)))
         {
             return;
@@ -420,7 +419,7 @@ void handle_fullscreen_toggle(bool is_cursor_locked)
 
         if (!current_window_is_fullscreen())
         {
-            // resize first THEN fullscreen to avoid window stretching
+            // resize first then fullscreen to avoid the stretching
             resize_current_window(monitor_width, monitor_height);
             current_window_toggle_fullscreen();
         }
@@ -433,8 +432,8 @@ void handle_fullscreen_toggle(bool is_cursor_locked)
             move_current_window_to((monitor_width - WINDOWED_WIDTH) / 2, (monitor_height - WINDOWED_HEIGHT) / 2);
         }
 
-        // recenter mouse otherwise toggle is detected as mouse movement
-        // same fix as locking cursor with escape previously
+        // recentre the mouse, otherwise the window changing size counts as the mouse moving
+        // and the camera jumps. same as what lock_cursor does
         if (is_cursor_locked)
         {
             move_mouse(screen_width() / 2.0, screen_height() / 2.0);
@@ -472,9 +471,9 @@ void handle_camera_detach_toggle(bool &is_detached, Camera &debug_cam, const Cam
 }
 
 /**
- * moves a camera with no gravity and no collision for the debug camera.
- * same as handle_movement but moves the camera directly instead of going through move_player.
- * so it can fly through the blocks
+ * moves a camera with no gravity and no collision, for the debug camera.
+ * like handle_movement but moves the camera directly instead of going through move_player,
+ * so it can fly through blocks. no collision means no need to split into steps
  */
 void handle_free_fly(Camera &cam, double dt)
 {

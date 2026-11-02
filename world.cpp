@@ -7,7 +7,7 @@
 #define STB_PERLIN_IMPLEMENTATION
 #include "stb_perlin.h"
 
-// how far away you can reach to break a block
+// how far away you can reach to break or place a block
 const double REACH = 5.0;
 
 /**
@@ -30,7 +30,7 @@ const int TERRAIN_OCTAVES = 4;         // layers of detail, see fractal_noise
 const int DIRT_DEPTH = 3;              // dirt blocks under the grass, stone below that
 const double CLIFF_SLOPE = 2.5;        // slopes this steep or more are bare stone, lower = more stone
 
-// noise is higher for every layer
+// each kind of noise reads its own layer, so plains, mountains, rivers etc. don't line up with each other
 const int NOISE_LAYER_PLAINS = 0;
 const int NOISE_LAYER_REGIONS = 1;
 const int NOISE_LAYER_MOUNTAINS = 2;
@@ -43,11 +43,11 @@ const double CONTINENT_SCALE = 192.0; // roughly how wide oceans and landmasses 
 const double CONTINENT_HEIGHT = 30.0; // how far land rises and ocean floor sinks from the base height
 const double COAST_FADE = 4.0;        // higher = mountains start closer to the coast
 const int SEA_LEVEL = 40;             // y of the top water block
-const int BEACH_HEIGHT = 1;           // land up to this many blocks above sea level is sand
-const int BEACH_WIDTH = 2;            // land within this many blocks of water is sand
+const int BEACH_HEIGHT = 1;           // beaches go up to this many blocks above sea level
+const int BEACH_WIDTH = 2;            // and this many blocks in from the water
 
 // trees
-const int TREE_SPACING = 5;   // world is split into squares this wide, each can hold one tree
+const int TREE_SPACING = 5;   // the world is split into squares this wide, each can hold one tree
 const int TREE_MIN_TRUNK = 4; // trunk size is between min and max
 const int TREE_MAX_TRUNK = 6;
 const double FOREST_SCALE = 128.0;      // roughly how wide forests and clearings are
@@ -59,7 +59,7 @@ const double RIVER_SCALE = 256.0; // roughly how far a river goes before turning
 const double RIVER_WIDTH = 0.04;  // how close to 0 the river noise has to be, bigger means wider rivers
 const int RIVER_DEPTH = 3;        // how far below sea level the middle of a river is carved
 
-// picks display color for blocks
+// the colour a block type is drawn in. water has alpha 200 so you can see through it
 color block_colour(BlockType type)
 {
     switch (type)
@@ -84,14 +84,14 @@ color block_colour(BlockType type)
     return COLOR_WHITE; // fallback
 }
 
+// water isn't solid, so you can walk through it and the crosshair goes through it
 bool is_solid(BlockType type)
 {
     return type != AIR && type != WATER;
 }
 
 /**
- * returns bool
- * is block cell inside the worlds arrays
+ * is the cell inside the world
  * x & z: 0-511
  * y: 0-127
  */
@@ -103,9 +103,8 @@ bool in_world(int x, int y, int z)
 }
 
 /**
- * checks what block is at given coordinates
- * returns air if theres no block in any world arrays
- * otherwise returns block type
+ * the block in a cell. outside the world counts as air, so callers don't need to check first.
+ * x / CHUNK_SIZE picks the chunk, x % CHUNK_SIZE is the position inside it (same for z)
  */
 BlockType get_block(const World &world, int x, int y, int z)
 {
@@ -118,8 +117,8 @@ BlockType get_block(const World &world, int x, int y, int z)
 }
 
 /**
- * puts a block type in the given coordinates
- * breaking block sets said coordinates as air type
+ * changes the block in a cell, breaking a block sets it to air.
+ * cells outside the world are ignored, so trees at the edge can't write outside the arrays
  */
 void set_block(World &world, int x, int y, int z, BlockType type)
 {
@@ -133,8 +132,8 @@ void set_block(World &world, int x, int y, int z, BlockType type)
 
 /**
  * sets every block to air
- * build functions only set blocks that are not air
- * so without this, the newly generated worlds would generate on top of old ones
+ * the build functions only set blocks that aren't air,
+ * so without this a new world would be built on top of the last one
  */
 void clear_world(World &world)
 {
@@ -177,14 +176,13 @@ CubeCorners get_block_corners(int x, int y, int z)
 }
 
 /**
- * fills world with flat square. size x size, 5 blocks down
+ * a flat size x size square, 5 blocks deep
  * y = 0 to 1: stone. 2 to 3: dirt. 4: grass. surface at y = 5
- * centered around the origin so spawn is 0,0
+ * centred on the middle of the world, which is where find_spawn starts looking
  */
 void build_superflat(World &world, int size)
 {
-    // start at -size/2 so the square is centered on 0,
-    // so something like size 20 goes from 246 to 265
+    // half the size back from the middle, so size 20 goes from 246 to 265
     int start = WORLD_SIZE / 2 - size / 2;
 
     for (int x = start; x < start + size; x++)
@@ -215,7 +213,11 @@ void build_superflat(World &world, int size)
 }
 
 /**
- * one layer of 2d noise around -1 to 1
+ * one layer of 2d noise, roughly -1 to 1
+ * stb_perlin's seeded noise is 3d, so this takes a flat slice through it at height `slice`.
+ * the seed's low 8 bits pick stb's random pattern and the next 8 bits pick the slice,
+ * then each layer moves 32 slices further so different layers never read the same noise.
+ * the + 0.5 puts the slice halfway between perlin's grid lines instead of right on one
  */
 float noise_2d(double x, double z, double frequency, unsigned int seed, int layer)
 {
@@ -227,9 +229,10 @@ float noise_2d(double x, double z, double frequency, unsigned int seed, int laye
 
 /**
  * noise added up in octaves
- * each octave has more detail than the last
- * but amplitude is half
- * scale is how wide the shapes are
+ * each octave is twice as detailed as the last but only half as strong,
+ * so big shapes come from the first and small bumps from the rest
+ * scale is how wide the biggest shapes are, in blocks
+ * dividing by max_total keeps the result roughly -1 to 1 however many octaves there are
  */
 double fractal_noise(int x, int z, double scale, unsigned int seed, int layer)
 {
@@ -264,20 +267,26 @@ double clamp_01(double value)
     return value;
 }
 
+// smoothstep: 0 and 1 stay the same, in between it eases in and out so changes have no hard edge
 double smooth_01(double value)
 {
     return value * value * (3.0 - 2.0 * value);
 }
 
+/**
+ * the height of column x,z before rounding to a whole block.
+ * gentle plains everywhere, mountains in some regions, continents raising land
+ * and sinking oceans, then rivers carved down through all of it
+ */
 double terrain_height_exact(int x, int z, unsigned int seed)
 {
     double plains = fractal_noise(x, z, PLAINS_SCALE, seed, NOISE_LAYER_PLAINS);
 
     /**
      * region noise is mostly between -0.5 and 0.5
-     * so after *2, lots of areas reach 0 or 1 (flat or mountains) after clamping
-     * +0.3 makes mountains more common
-     * then smoothstep eases in and out so terrain transitions smoothly
+     * so after * 2, lots of areas reach 0 or 1 (flat or mountains) after clamping
+     * + 0.3 makes mountains more common
+     * then smoothstep eases in and out so flat land turns into mountains gradually
      */
     double region = noise_2d(x, z, 1.0 / REGION_SCALE, seed, NOISE_LAYER_REGIONS);
     double mountain_amount = clamp_01(region * 2.0 + 0.3);
@@ -373,6 +382,12 @@ double random_01(int x, int z, unsigned int seed, unsigned int salt)
     return hash_column(x, z, seed, salt) / 4294967295.0;
 }
 
+/**
+ * one tree on the block at x, ground, z.
+ * the trunk goes straight up, then 4 layers of leaves around its top:
+ * two 5 x 5 layers then two 3 x 3, each with its corners cut off so it looks rounder.
+ * leaves only go in air, so they never replace a trunk or the ground
+ */
 void place_tree(World &world, int x, int ground, int z, int trunk_height)
 {
     // y of the highest trunk block
@@ -414,14 +429,12 @@ void place_tree(World &world, int x, int ground, int z, int trunk_height)
 
 /**
  * plants the trees over the finished terrain
- * world is split across TREE_SPACING squares, each gets one tree max
- * trunk goes somewhere in the first 3 rows and 3 columns of square
- * because if a tree generated in a neighbouring square,
- * it should have a couple squares between it and another tree
+ * the world is split into TREE_SPACING x TREE_SPACING squares, each gets one tree at most
+ * the trunk only goes in the first 3 x 3 of its square, so trunks in neighbouring
+ * squares are always at least 2 blocks apart
  * forest noise picks each square's chance,
- * some parts of the world are thick forests some parts have less trees
- * only generated on grass
- * uses terrain_height for the ground
+ * so some parts of the world are thick forest and some only have the odd tree
+ * only grows on grass, so never on sand, stone or underwater
  */
 void add_trees(World &world, unsigned int seed)
 {
@@ -515,9 +528,11 @@ void add_beaches(World &world)
 }
 
 /**
- * fills the whole world with the noised terrain
- * each column from the bottom is stone, then dirt depth, then 1 grass
- * world starts as all air so only the solid parts need setting
+ * fills the whole world with the noise terrain
+ * each column from the bottom is stone, then DIRT_DEPTH dirt, then 1 grass.
+ * underwater columns get sand instead, steep columns are all stone,
+ * and water fills every column up to sea level. then beaches and trees go on top
+ * the world has to be all air first (build_world clears it), only the rest is set here
  * same seed always gives same world
  */
 void build_terrain(World &world, unsigned int seed)
@@ -582,9 +597,7 @@ void build_terrain(World &world, unsigned int seed)
 // the superflat is this many blocks across
 const int SUPERFLAT_SIZE = 100;
 
-/**
- * empties world then builds it based on settings provided
- */
+// empties the world then builds whichever type the settings ask for
 void build_world(World &world, const WorldSettings &settings)
 {
     clear_world(world);
@@ -599,6 +612,10 @@ void build_world(World &world, const WorldSettings &settings)
     }
 }
 
+/**
+ * the y just above the highest block in column x,z, where something standing on it would be.
+ * water counts as a block here, is_dry_land checks for it. 0 if the column is empty
+ */
 int surface_y(const World &world, int x, int z)
 {
     for (int y = WORLD_HEIGHT - 1; y >= 0; y--)
@@ -613,7 +630,7 @@ int surface_y(const World &world, int x, int z)
 }
 
 /**
- * is top of column able to be stood on
+ * can the top of the column be stood on, i.e. it isn't water
  * the top block is the one just under surface_y
  */
 bool is_dry_land(const World &world, int x, int z)
@@ -679,8 +696,10 @@ Box block_box(int x, int y, int z)
 }
 
 /**
- * does this box overlap any active block in the world?
- * checks every block, stops as soon as one hits
+ * does this box overlap any solid block in the world?
+ * only checks the cells the box covers: floor of its min corner up to ceil of its max - 1.
+ * the - 1 is because a box ending exactly on a block edge doesn't reach into the next cell.
+ * stops as soon as one is solid
  */
 bool box_hits_world(const Box &box, const World &world)
 {
@@ -698,7 +717,7 @@ bool box_hits_world(const Box &box, const World &world)
         {
             for (int z = min_z; z <= max_z; z++)
             {
-                // if its not air or water then its solid
+                // air and water can be walked through
                 if (is_solid(get_block(world, x, y, z)))
                 {
                     return true;
@@ -712,7 +731,7 @@ bool box_hits_world(const Box &box, const World &world)
 
 /**
  * the direction the camera is looking, as a 3D direction of length 1.
- * starts from the flat forward direction (same as handle_movement),
+ * starts from the flat forward direction (same as wasd_direction in input.cpp),
  * then tilts it by pitch:
  * - looking down (positive pitch) makes y negative, by sin(pitch)
  * - the more you tilt, the less of the ray points forward, so x and z
@@ -728,7 +747,7 @@ Vector3 look_direction(const Camera &cam)
 }
 
 /**
- * what the DDA raycast tracks on ONE axis (x, y or z).
+ * what the dda raycast tracks on one axis (x, y or z).
  * the ray uses three of these, and each moves on its own
  */
 struct RayAxis
@@ -736,12 +755,12 @@ struct RayAxis
     int cell;       // which cell the ray is in on this axis
     int step;       // +1 or -1: which way the ray moves on this axis (0 = doesn't move)
     double t_delta; // distance along the ray to cross one whole cell on this axis
-    double t_max;   // distance along the ray to reach the NEXT cell edge on this axis
+    double t_max;   // distance along the ray to reach the next cell edge on this axis
 };
 
 /**
  * sets up one axis from the camera position and look direction on that axis
- * t_max is the distance to the next edge in this axis, * t_delta to turn it into distance along the ray
+ * the gap to the next edge is measured along this axis, then * t_delta turns it into distance along the ray
  */
 RayAxis make_ray_axis(double pos, double dir)
 {
@@ -789,13 +808,12 @@ double step_axis(RayAxis &axis)
 
 /**
  * what is the crosshair pointing at?
- * 3D DDA: instead of checking points every small step, the ray jumps straight
+ * 3d dda: instead of checking points every small step, the ray jumps straight
  * to the next cell edge it crosses. each axis counts down to its next edge
- * (t_max), and whichever edge is closest gets crossed, moving one cell
- * on that axis only. this means:
- * - every cell the ray touches is checked, so corners can't be skipped
- * - each cell shares a FACE with the one before it, so the previous (empty)
- *   cell is always a valid spot to place a block, never diagonal
+ * (t_max), and whichever edge is closest gets crossed, moving one cell on that axis only.
+ * so every cell the ray touches is checked and corners can't be skipped,
+ * and each cell shares a face with the one before it, so the previous (empty)
+ * cell is always a valid spot to place a block, never a diagonal one
  * cells are visited nearest first, so the first solid one is the block
  * you're looking at, not one hidden behind it
  */
@@ -856,7 +874,7 @@ RayHit raycast_block(const Camera &cam, const World &world)
             return result;
         }
 
-        // went below the grid: nothing to break, but a block can go on it
+        // went below the floor of the world: nothing to break, but a block can go on it
         if (ay.cell < WORLD_FLOOR_Y)
         {
             result.can_place = true;
@@ -882,8 +900,10 @@ RayHit raycast_block(const Camera &cam, const World &world)
         }
     }
 
-    return result; // reached REACH without hitting anything so result is in nothing found state
+    // never gets here, the loop always returns, but the compiler wants every path to return
+    return result;
 }
+
 /**
  * moves the time of day on by dt seconds.
  * dt / day_length is the fraction of a whole day that passed this frame,

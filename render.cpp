@@ -51,7 +51,7 @@ const int SEE_THROUGH_ALPHA = 128;
 /**
  * one visible face waiting to be drawn
  * stores which block and which face instead of the projected points
- * to keep it small (16 bytes) so the list fits on the stack
+ * to keep it small (24 bytes) so the list fits on the stack
  */
 struct FaceRef
 {
@@ -60,10 +60,11 @@ struct FaceRef
     double depth; // squared distance from camera, for sorting
 };
 
-// a cube shows at most 3 faces, but 10000 is plenty for now probably
+// the most faces that can be drawn in one frame. normal play is around 3000.
+// the list is on the stack (10000 * 24 bytes = 240 kb), much bigger would overflow the 1 mb stack
 const int MAX_VISIBLE_FACES = 10000;
 
-// how many blocks out are rendered around the player
+// how many blocks out are rendered around the player, in every direction (a cube, not a sphere)
 const int RENDER_DISTANCE = 32;
 
 // distance from a block's centre to its furthest corner, half of the cube's
@@ -106,7 +107,8 @@ enum ScreenEdge
 };
 
 /**
- * frustum shape from camera
+ * the pyramid shape a camera can see, with the camera at its tip.
+ * stored as the camera's position and directions plus how slanted the side walls are
  */
 struct Frustum
 {
@@ -289,8 +291,8 @@ Polygon clip_world_polygon_to_near_plane(const Camera &cam, const Polygon &world
 }
 
 /**
- * same as above function but just for a line instead of whole polygon
- * returns false if entire line is outside of wall
+ * same as clip_world_polygon_to_near_plane but for a line, changes start and end in place
+ * returns false if the whole line is behind the wall
  */
 bool clip_world_line_to_near_plane(const Camera &cam, Vector3 &start, Vector3 &end)
 {
@@ -427,12 +429,16 @@ ScreenPolygon clip_polygon_to_screen(const ScreenPolygon &input)
 // LINES AND WIREFRAME
 // ============================================================
 
+/**
+ * a line between two points in the world, cut at the near wall first
+ * so an end behind the camera doesn't flip to the wrong side of the screen
+ */
 void draw_3d_line(const Camera &cam, const Vector3 &start, const Vector3 &end, color line_color)
 {
     Vector3 a = world_to_camera(cam, start);
     Vector3 b = world_to_camera(cam, end);
 
-    // >= not > because a clipped end sits exactly ON the wall and must count
+    // >= not > because a clipped end sits exactly on the wall and must count
     bool a_in_front = a.z >= NEAR_PLANE;
     bool b_in_front = b.z >= NEAR_PLANE;
 
@@ -452,13 +458,14 @@ void draw_3d_line(const Camera &cam, const Vector3 &start, const Vector3 &end, c
         b = near_plane_intersection(a, b);
     }
 
-    // both ends are now safely in front, so step 3 (divide) is safe
+    // both ends are now in front, so the divide in camera_to_screen is safe
     Vector2 screen_start = camera_to_screen(cam, a);
     Vector2 screen_end = camera_to_screen(cam, b);
 
     draw_line(line_color, screen_start.x, screen_start.y, screen_end.x, screen_end.y);
 }
 
+// grey lines on y = 0 around the origin, grid_radius out in each direction
 void draw_grid(const Camera &cam, int grid_radius)
 {
     color grid_color = rgba_color(100, 100, 100, 100);
@@ -478,9 +485,11 @@ void draw_grid(const Camera &cam, int grid_radius)
 }
 
 /**
- * frustum culling, any polygon not within view doesnt get rendered
- * screen clipping does this but after the calculations already happen
- * this makes it so that the calculations dont happen before they are rendered then clipped
+ * the frustum for frustum culling: blocks completely outside the camera's view are skipped
+ * before any of their faces are projected. screen clipping would hide them anyway,
+ * but only after all the work of projecting them.
+ * right, up and forward are the camera's directions in the world,
+ * the same rotations world_to_camera undoes
  */
 Frustum make_frustum(const Camera &cam)
 {
@@ -513,6 +522,7 @@ Frustum make_frustum(const Camera &cam)
     return f;
 }
 
+// how far a goes along b, when b is length 1
 double dot_product(const Vector3 &a, const Vector3 &b)
 {
     return a.x * b.x + a.y * b.y + a.z * b.z;
@@ -520,18 +530,19 @@ double dot_product(const Vector3 &a, const Vector3 &b)
 
 /**
  * could any part of the block be inside the frustum at all
- * finds the block centre's camera space coords
- * then checks it against all 5 walls of frustum
+ * the block is treated as a ball around its centre (BLOCK_RADIUS covers its corners),
+ * so a block only just poking into the view is still kept
+ * finds the centre's camera space coords, then checks it against all 5 walls of the frustum
  */
 bool block_in_frustum(const Frustum &f, int x, int y, int z)
 {
-    // offset from the camera to the block's center
+    // offset from the camera to the block's centre
     // +0.5 because xyz is the block's min corner not the middle
     Vector3 offset = {x + 0.5 - f.position.x, y + 0.5 - f.position.y, z + 0.5 - f.position.z};
 
-    double cam_x = dot_product(offset, f.right); // how far right
-    double cam_y = dot_product(offset, f.up);
-    double cam_z = dot_product(offset, f.forward);
+    double cam_x = dot_product(offset, f.right);   // how far right of the camera
+    double cam_y = dot_product(offset, f.up);      // how far above
+    double cam_z = dot_product(offset, f.forward); // how far in front
 
     // behind the near wall, even the closest edge of the ball.
     // checked first because about half of all blocks are behind
@@ -804,7 +815,8 @@ bool is_face_hidden(const World &world, int x, int y, int z, int face)
 }
 
 /**
- * squared distance and if a > b then a squared > b squared, so the order is the same
+ * squared distance between two points, used for sorting faces.
+ * skips the sqrt: if a > b then a squared > b squared, so the order comes out the same
  */
 double distance_squared(const Vector3 &a, const Vector3 &b)
 {
@@ -824,7 +836,11 @@ color shade_colour(color base, double factor)
 }
 
 /**
- * fills the list with every face that the camera is facing
+ * fills the list with every face the player could see: blocks within RENDER_DISTANCE
+ * and inside the frustum, faces not covered by a neighbour and facing the camera.
+ * culling uses cull_cam (always the player), depth uses view_cam,
+ * so the debug camera sorts by its own distance but only sees what the player would draw.
+ * stops early if the list fills up
  */
 void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const World &world, const Settings &settings, FaceList &faces)
 {
@@ -920,8 +936,12 @@ void sort_faces_far_to_close(FaceList &faces)
     std::sort(std::begin(faces.data), std::begin(faces.data) + faces.size, is_further);
 }
 
-// projects one face to the screen, cutting off any part behind the near wall
-// see_through draws it at half opacity, so hidden faces behind it show
+/**
+ * projects one face to the screen and fills it, cutting off any part behind the near wall
+ * and outside the window. light darkens it for the time of day,
+ * see_through draws it at half opacity so faces behind it show,
+ * show_outlines draws its 4 edges on top
+ */
 void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int z, BlockType type, int face, bool see_through, double light, bool show_outlines, FrameTimer &timer)
 {
     // everything up to the fill is our own maths, timed as project
@@ -937,7 +957,7 @@ void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int
         world_shape.points[i] = c.points[FACE_CORNERS[face][i]];
     }
 
-    // debug camera only: first cut away whatever is behind the PLAYER's near
+    // debug camera only: first cut away whatever is behind the player's near
     // wall, so the debug view shows exactly what the player actually draws.
     // skipped in normal play, where both cameras are the player and the
     // view camera's own cut below already does this
@@ -953,7 +973,7 @@ void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int
         }
     }
 
-    // projection steps 1 and 2 for the face's corners, from the VIEW camera
+    // projection step 1 for the face's corners, from the view camera.
     // stays in camera space so clipping can see each corner's depth
     Polygon face_shape;
     face_shape.size = world_shape.size;
@@ -971,7 +991,7 @@ void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int
         return;
     }
 
-    // step 3: every remaining corner is in front of the wall, so can divide
+    // projection step 2: every remaining corner is in front of the wall, so the divide is safe
     ScreenPolygon screen_shape;
     screen_shape.size = clipped.size;
     for (int i = 0; i < clipped.size; i++)
@@ -981,11 +1001,11 @@ void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int
 
     // corners close to the camera can land tens of thousands of pixels
     // off screen, which overflows SplashKit's triangle filling (it uses
-    // 16-bit numbers, max 32767) and causes the lag and random shapes.
+    // 16-bit numbers, max 32767), which causes lag and random shapes.
     // cutting to the window keeps every corner inside it
     ScreenPolygon on_screen = clip_polygon_to_screen(screen_shape);
 
-    // face is entirely off the size of the window, so dont render
+    // face is entirely off the side of the window, so dont render
     if (on_screen.size < 3)
     {
         return;
@@ -1055,7 +1075,7 @@ int draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const World
     double light = block_light(time_of_day);
     bool show_outlines = is_on(settings, SETTING_OUTLINES);
 
-    // made fresh every frame because the camera moves, so which faces are are visible and their order changes each frame
+    // made fresh every frame because the camera moves, so which faces are visible and their order changes each frame
     FaceList faces;
 
     double collect_start = time_now_ms();
@@ -1100,7 +1120,9 @@ void draw_underwater_tint(const Camera &cam, const World &world)
     fill_rectangle(rgba_color(30, 60, 160, 90), 0, 0, screen_width(), screen_height());
 }
 
-// HUD BELOW
+// ============================================================
+// HUD (fps counter and debug info)
+// ============================================================
 
 // how often the fps number is recalculated.
 // averaging over half a second gives a steady number instead of one that flickers every frame
