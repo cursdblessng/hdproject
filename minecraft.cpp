@@ -339,8 +339,10 @@ int main()
         // crosshair
         fill_circle(COLOR_WHITE, screen_width() / 2.0, screen_height() / 2.0, 2);
 
-        // TEMPORARY: small square in the bottom left showing the selected block's
-        // colour, so you can tell what you're holding. a proper hotbar comes later
+        // small square in the bottom left showing the selected block's colour, so you can tell what you're holding.
+        // a black square 2 pixels bigger on every side goes underneath first,
+        // so the edge left showing is a border that stands out on any background
+        fill_rectangle(COLOR_BLACK, 8, screen_height() - 42, 34, 34);
         fill_rectangle(block_colour(selected_block), 10, screen_height() - 40, 30, 30);
 
         // shows which camera you're looking through, so the frozen player isn't mistaken for a bug
