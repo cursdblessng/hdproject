@@ -18,6 +18,7 @@ const int SETTING_PAGES[NUM_SETTINGS] = {0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1};
 const int OPTION_COUNTS[NUM_SETTINGS] = {5, 5, 4, 4, 2, 2, 2, 2, 2, 2, 2};
 
 // what each option shows on its button. settings with fewer options leave the rest blank
+// AI assisted
 const string OPTION_LABELS[NUM_SETTINGS][MAX_OPTIONS] = {
     {"Very Low", "Low", "Normal", "High", "Very High"},
     {"70", "80", "90", "100", "115"},

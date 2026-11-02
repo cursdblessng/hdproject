@@ -2,6 +2,8 @@
 #include <chrono> // steady_clock
 #include <cstdio> // printf, fflush
 
+// debugging was AI assisted
+
 // how often the averages are printed
 const double REPORT_INTERVAL_MS = 1000.0;
 

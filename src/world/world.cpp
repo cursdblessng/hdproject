@@ -218,6 +218,10 @@ void build_superflat(World &world, int size)
  * the seed's low 8 bits pick stb's random pattern and the next 8 bits pick the slice,
  * then each layer moves 32 slices further so different layers never read the same noise.
  * the + 0.5 puts the slice halfway between perlin's grid lines instead of right on one
+ * 
+ * // method of generating terrain taken from online videos:
+ * https://youtu.be/2mpklUE7BfA
+ * https://youtu.be/J1OdPrO7GD0
  */
 float noise_2d(double x, double z, double frequency, unsigned int seed, int layer)
 {
@@ -366,6 +370,7 @@ double terrain_slope(int x, int z, unsigned int seed)
  * salt lets one column answer different questions (is there a tree, where, how tall)
  * without them all getting the same number
  * unsigned so going past the max just wraps around instead of being undefined
+ * // AI assisted, general structure of ensuring tree location was consistent was AI assisted
  */
 unsigned int hash_column(int x, int z, unsigned int seed, unsigned int salt)
 {
