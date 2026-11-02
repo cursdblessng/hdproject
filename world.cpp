@@ -35,6 +35,7 @@ const int NOISE_LAYER_PLAINS = 0;
 const int NOISE_LAYER_REGIONS = 1;
 const int NOISE_LAYER_MOUNTAINS = 2;
 const int NOISE_LAYER_CONTINENTS = 3;
+const int NOISE_LAYER_FORESTS = 4;
 
 // oceans
 const double CONTINENT_SCALE = 192.0; // roughly how wide oceans and landmasses are
@@ -42,6 +43,14 @@ const double CONTINENT_HEIGHT = 30.0; // how far land rises and ocean floor sink
 const double COAST_FADE = 4.0;        // higher = mountains start closer to the coast
 const int SEA_LEVEL = 40;             // y of the top water block
 const int BEACH_HEIGHT = 1;           // land up to this many blocks above sea level is sand
+
+// trees
+const int TREE_SPACING = 5;   // world is split into squares this wide, each can hold one tree
+const int TREE_MIN_TRUNK = 4; // trunk size is between min and max
+const int TREE_MAX_TRUNK = 6;
+const double FOREST_SCALE = 128.0;      // roughly how wide forests and clearings are
+const double PLAINS_TREE_CHANCE = 0.03; // chance that a square gets a tree in open land
+const double FOREST_TREE_CHANCE = 0.6;  // chance that a square gets a tree in a forest
 
 // picks display color for blocks
 color block_colour(BlockType type)
@@ -184,7 +193,7 @@ void build_superflat(World &world, int size)
  */
 float noise_2d(double x, double z, double frequency, unsigned int seed, int layer)
 {
-    int slice = ((int)((seed >> 8) & 255) + layer * 64) & 255;
+    int slice = ((int)((seed >> 8) & 255) + layer * 32) & 255;
 
     return stb_perlin_noise3_seed((float)(x * frequency), (float)slice + 0.5f, (float)(z * frequency),
                                   0, 0, 0, (int)(seed & 255));
@@ -295,6 +304,113 @@ double terrain_slope(int x, int z, unsigned int seed)
 }
 
 /**
+ * a random looking number for column x,z that is always the same for the same seed
+ * multiplying by big odd numbers and shifting the bits around scrambles them,
+ * so columns next to each other get completely different numbers
+ * salt lets one column answer different questions (is there a tree, where, how tall)
+ * without them all getting the same number
+ * unsigned so going past the max just wraps around instead of being undefined
+ */
+unsigned int hash_column(int x, int z, unsigned int seed, unsigned int salt)
+{
+    unsigned int h = seed * 2654435761u + salt * 2246822519u;
+    h ^= (unsigned int)x * 374761393u;
+    h ^= (unsigned int)z * 668265263u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return h ^ (h >> 16);
+}
+
+// hash_column as a number from 0 to 1, by dividing by the biggest unsigned int
+double random_01(int x, int z, unsigned int seed, unsigned int salt)
+{
+    return hash_column(x, z, seed, salt) / 4294967295.0;
+}
+
+void place_tree(World &world, int x, int ground, int z, int trunk_height)
+{
+    // y of the highest trunk block
+    int top = ground + trunk_height;
+
+    for (int y = ground + 1; y <= top; y++)
+    {
+        set_block(world, x, y, z, WOOD);
+    }
+
+    for (int y = top - 2; y <= top + 1; y++)
+    {
+        // wide at the bottom of the leaves then small at the top
+        int radius = 2;
+        if (y >= top)
+        {
+            radius = 1;
+        }
+
+        for (int dx = -radius; dx <= radius; dx++)
+        {
+            for (int dz = -radius; dz <= radius; dz++)
+            {
+                // corner = at the edge on both x and z
+                bool is_corner = (dx == -radius || dx == radius) && (dz == -radius || dz == radius);
+
+                if (is_corner)
+                {
+                    continue;
+                }
+                if (get_block(world, x + dx, y, z + dz) == AIR)
+                {
+                    set_block(world, x + dx, y, z + dz, LEAVES);
+                }
+            }
+        }
+    }
+}
+
+/**
+ * plants the trees over the finished terrain
+ * world is split across TREE_SPACING squares, each gets one tree max
+ * trunk goes somewhere in the first 3 rows and 3 columns of square
+ * because if a tree generated in a neighbouring square,
+ * it should have a couple squares between it and another tree
+ * forest noise picks each square's chance,
+ * some parts of the world are thick forests some parts have less trees
+ * only generated on grass
+ * uses terrain_height for the ground
+ */
+void add_trees(World &world, unsigned int seed)
+{
+    for (int cell_x = 0; cell_x < WORLD_SIZE; cell_x += TREE_SPACING)
+    {
+        for (int cell_z = 0; cell_z < WORLD_SIZE; cell_z += TREE_SPACING)
+        {
+            // forest noise is mostly -0.5 to 0.5, so * 2 + 0.5 spreads it over 0 to 1
+            double forest = clamp_01(noise_2d(cell_x, cell_z, 1.0 / FOREST_SCALE, seed, NOISE_LAYER_FORESTS) * 2.0 + 0.5);
+            double chance = PLAINS_TREE_CHANCE + forest * (FOREST_TREE_CHANCE - PLAINS_TREE_CHANCE);
+
+            // salt 0: does this square get a tree
+            if (random_01(cell_x, cell_z, seed, 0) >= chance)
+            {
+                continue;
+            }
+
+            // salts 1 and 2: where in the square, % 3 gives 0 to 2
+            int x = cell_x + (int)(hash_column(cell_x, cell_z, seed, 1) % (TREE_SPACING - 2));
+            int z = cell_z + (int)(hash_column(cell_x, cell_z, seed, 2) % (TREE_SPACING - 2));
+
+            int ground = terrain_height(x, z, seed);
+            if (get_block(world, x, ground, z) != GRASS)
+            {
+                continue;
+            }
+
+            // salt 3: trunk height, % 3 gives 0 to 2 so heights 4 to 6
+            int trunk_height = TREE_MIN_TRUNK + (int)(hash_column(cell_x, cell_z, seed, 3) % (TREE_MAX_TRUNK - TREE_MIN_TRUNK + 1));
+
+            place_tree(world, x, ground, z, trunk_height);
+        }
+    }
+}
+
+/**
  * fills the whole world with the noised terrain
  * each column from the bottom is stone, then dirt depth, then 1 grass
  * world starts as all air so only the solid parts need setting
@@ -350,6 +466,9 @@ void build_terrain(World &world, unsigned int seed)
             }
         }
     }
+
+    // after all terrain is generated, place the trees
+    add_trees(world, seed);
 }
 
 int surface_y(const World &world, int x, int z)
