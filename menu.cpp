@@ -1,8 +1,4 @@
 #include "menu.h"
-#include "save.h"
-
-// name the font is loaded under, used instead of keeping the font itself
-const string MENU_FONT = "menu_font";
 
 // text sizes in pixels. pixel fonts are about as wide as they are tall,
 // so 48 keeps "Voxel Engine" (12 letters) inside the 800 wide window
@@ -14,8 +10,7 @@ const double BUTTON_WIDTH = 300.0;
 const double BUTTON_HEIGHT = 50.0;
 const double BUTTON_GAP = 20.0;
 
-// smaller text above each box saying what it's for
-const int LABEL_SIZE = 14;
+// text boxes on the create world screen
 const double LABEL_SPACE = 30.0;      // room left above a box for its label
 const double TEXT_BOX_PADDING = 10.0; // gap between a text box's left edge and its text
 
@@ -650,41 +645,6 @@ void draw_pause_menu(const PauseMenu &menu)
     draw_controls(menu.quit_to_title.area.y + BUTTON_HEIGHT + BUTTON_GAP);
 }
 
-// how far the debug camera label sits in from the window's edges
-const double HUD_MARGIN = 10.0;
-const double DEBUG_DOT_RADIUS = 6.0;
-
-// space inside the label's box, around the dot and text and between them
-const double DEBUG_LABEL_PADDING = 8.0;
-
-/**
- * dark see-through box in the bottom right corner with a red dot and red text,
- * the box keeps the red readable over bright sky and blocks.
- * the box is sized from the text, then everything is placed from its top left corner
- */
-void draw_debug_cam_label()
-{
-    string text = "DEBUG CAMERA";
-    double width = text_width(text, MENU_FONT, LABEL_SIZE);
-    double height = text_height(text, MENU_FONT, LABEL_SIZE);
-
-    // padding, dot, padding, text, padding
-    double dot_space = DEBUG_DOT_RADIUS * 2.0 + DEBUG_LABEL_PADDING;
-    double box_width = DEBUG_LABEL_PADDING + dot_space + width + DEBUG_LABEL_PADDING;
-    double box_height = height + DEBUG_LABEL_PADDING * 2.0;
-
-    // measured back from the bottom right corner
-    double box_x = screen_width() - HUD_MARGIN - box_width;
-    double box_y = screen_height() - HUD_MARGIN - box_height;
-
-    fill_rectangle(rgba_color(0, 0, 0, 150), box_x, box_y, box_width, box_height);
-
-    // the dot and the text both line up on the box's middle height
-    double centre_y = box_y + box_height / 2.0;
-    fill_circle(COLOR_RED, box_x + DEBUG_LABEL_PADDING + DEBUG_DOT_RADIUS, centre_y, DEBUG_DOT_RADIUS);
-    draw_text(text, COLOR_RED, MENU_FONT, LABEL_SIZE, box_x + DEBUG_LABEL_PADDING + dot_space, centre_y - height / 2.0);
-}
-
 void draw_world_select_menu(const WorldSelectMenu &menu)
 {
     clear_screen(COLOR_SKY_BLUE);
@@ -799,38 +759,4 @@ void draw_loading_screen(const string &message)
     clear_screen(COLOR_SKY_BLUE);
     draw_centred_text(message, COLOR_WHITE, BUTTON_TEXT_SIZE, screen_width() / 2.0, screen_height() / 2.0);
     refresh_screen();
-}
-
-/**
- * opens the slot's save if it has one. if not, builds a new world from the settings
- * and saves it straight away, so the slot has files from the start.
- * a damaged save is rebuilt from its settings too, so the world still opens.
- * everything else is reset so nothing carries over from the last world played
- */
-void start_world(int slot, const WorldSettings &settings, World &world, Camera &cam, Player &player, bool &is_camera_detached, bool &is_cursor_locked)
-{
-    // loading takes a moment, so show something instead of a frozen menu
-    draw_loading_screen("Loading world...");
-
-    if (!load_world(slot, world, cam, player))
-    {
-        draw_loading_screen("Generating world...");
-
-        build_world(world, settings);
-
-        cam.position = find_spawn(world);
-        cam.yaw = 0.0;
-        cam.pitch = 0.0;
-        player.is_flying = false;
-
-        save_world(slot, settings, world, cam, player);
-    }
-
-    // not saved, so these start the same whether the world was loaded or built
-    player.velocity_y = 0.0;
-    player.on_ground = false;
-    is_camera_detached = false;
-
-    // throws away any mouse movements from before to stop mouse movement on the first frame
-    lock_cursor(is_cursor_locked);
 }

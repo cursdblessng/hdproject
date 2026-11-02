@@ -1,22 +1,16 @@
-// every menu screen (main, world select, create world, delete world, settings, pause),
-// the buttons they're made of, and which screen the game is on
+// every menu screen (main, world select, create world, delete world, settings, pause)
+// and the buttons they're made of
 #pragma once
 
 #include "splashkit.h"
 #include "world.h"
-#include "input.h"
 #include "settings.h"
 
-// which screen main is showing, decides what each frame does
-enum GameScreen
-{
-    SCREEN_MAIN_MENU,
-    SCREEN_WORLD_SELECT,
-    SCREEN_CREATE_WORLD,
-    SCREEN_DELETE_WORLD,
-    SCREEN_SETTINGS,
-    SCREEN_PLAYING
-};
+// name the font is loaded under, used instead of keeping the font itself
+const string MENU_FONT = "menu_font";
+
+// smaller text, for labels and hints. the hud uses it too
+const int LABEL_SIZE = 14;
 
 // what was clicked on the main menu this frame, MENU_NONE if nothing
 enum MenuChoice
@@ -170,9 +164,6 @@ CreateChoice handle_create_world_menu(const CreateWorldMenu &menu, CreateWorldFo
 // title, labels, boxes and buttons over the whole screen
 void draw_create_world_menu(const CreateWorldMenu &menu, const CreateWorldForm &form);
 
-// loads the slot's world, or builds and saves a new one if it has no save
-void start_world(int slot, const WorldSettings &settings, World &world, Camera &cam, Player &player, bool &is_camera_detached, bool &is_cursor_locked);
-
 // what was clicked on the delete world screen
 enum DeleteChoice
 {
@@ -196,9 +187,6 @@ DeleteChoice delete_menu_choice(const DeleteMenu &menu);
 
 // title, the world's name and the buttons over the whole screen
 void draw_delete_menu(const DeleteMenu &menu, const string &world_name);
-
-// red dot and "DEBUG CAMERA" in the bottom right corner, drawn while the camera is detached
-void draw_debug_cam_label();
 
 // one button per setting showing its current option, then done and a button to switch page.
 // only the settings on the current page are laid out, drawn and clicked

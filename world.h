@@ -179,6 +179,3 @@ bool box_hits_world(const Box &box, const World &world);
 
 // what the crosshair is pointing at: which block, and where a new block would go
 RayHit raycast_block(const Camera &cam, const World &world);
-
-// moves the time of day (0 to 1, a whole day) on by dt seconds, back to 0 after a full day
-void advance_time(double &time_of_day, double day_length_seconds, double dt);
