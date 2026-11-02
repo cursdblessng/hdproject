@@ -1,6 +1,6 @@
 #include "splashkit.h"
 #include "game.h"
-#include "menu.h" // load_menu_font
+#include "../ui/menu.h" // load_menu_font
 
 int main()
 {

@@ -2,7 +2,7 @@
 // anything behind the camera or outside the window before it's drawn
 #pragma once
 
-#include "world.h"
+#include "../world/world.h"
 
 // how far in front of the camera the "near wall" is
 // anything closer than this gets cut off, because dividing by a z

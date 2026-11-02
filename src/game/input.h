@@ -1,7 +1,7 @@
 // keyboard and mouse controls: moving the player, looking, toggles, and breaking and placing blocks
 #pragma once
 
-#include "world.h"
+#include "../world/world.h"
 
 /**
  * movement state for the player that isnt stored in the camera

@@ -3,8 +3,8 @@
 #pragma once
 
 #include "splashkit.h"
-#include "world.h"
-#include "settings.h"
+#include "../world/world.h"
+#include "../game/settings.h"
 
 // name the font is loaded under, used instead of keeping the font itself
 const string MENU_FONT = "menu_font";

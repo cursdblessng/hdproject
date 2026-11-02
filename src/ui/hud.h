@@ -1,7 +1,7 @@
 // the hud drawn over the world: crosshair, selected block, fps counter, debug info and the debug camera label
 #pragma once
 
-#include "world.h"
+#include "../world/world.h"
 
 // frame rate measurement, kept in main because it has to remember
 // things between frames

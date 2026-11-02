@@ -1,12 +1,12 @@
 // the game as a whole: everything it remembers between frames, and what each screen does in one frame
 #pragma once
 
-#include "world.h"
-#include "input.h"  // Player
+#include "../world/world.h"
+#include "input.h"            // Player
 #include "settings.h"
-#include "menu.h"   // CreateWorldForm
-#include "hud.h"    // FpsCounter
-#include "timing.h" // FrameTimer
+#include "../ui/menu.h"       // CreateWorldForm
+#include "../ui/hud.h"        // FpsCounter
+#include "../render/timing.h" // FrameTimer
 
 // which screen is showing, decides what each frame does
 enum GameScreen

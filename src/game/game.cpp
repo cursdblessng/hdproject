@@ -1,7 +1,7 @@
 #include "game.h"
-#include "render.h"
-#include "sky.h"
-#include "save.h"
+#include "../render/render.h"
+#include "../render/sky.h"
+#include "../world/save.h"
 #include "splashkit.h"
 
 // a frame longer than this (dragging the window, a big hitch) is treated as this long,

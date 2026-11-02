@@ -3,8 +3,8 @@
 #pragma once
 
 #include "world.h"
-#include "input.h" // Player
-#include "settings.h"
+#include "../game/input.h" // Player
+#include "../game/settings.h"
 
 // writes the slot's files, replacing whatever was saved there before
 void save_world(int slot, const WorldSettings &settings, const World &world, const Camera &cam, const Player &player);

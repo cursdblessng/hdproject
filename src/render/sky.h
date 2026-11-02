@@ -1,7 +1,7 @@
 // day and night: the time of day, the sky colour, how bright blocks are, and the sun and moon
 #pragma once
 
-#include "world.h"
+#include "../world/world.h"
 
 // moves the time of day (0 to 1, a whole day) on by dt seconds, back to 0 after a full day
 void advance_time(double &time_of_day, double day_length_seconds, double dt);

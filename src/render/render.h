@@ -1,9 +1,9 @@
 // drawing the blocks: frustum and face culling, then sorting the faces far to near and filling them in
 #pragma once
 
-#include "world.h"
+#include "../world/world.h"
 #include "timing.h"
-#include "settings.h"
+#include "../game/settings.h"
 
 // the most faces that can be drawn in one frame. normal play is around 3000.
 // the list is on the stack (10000 * 24 bytes = 240 kb), much bigger would overflow the 1 mb stack

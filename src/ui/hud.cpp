@@ -1,6 +1,6 @@
 #include "hud.h"
-#include "render.h" // MAX_VISIBLE_FACES
-#include "menu.h"   // MENU_FONT and LABEL_SIZE, for the debug camera label
+#include "../render/render.h" // MAX_VISIBLE_FACES
+#include "menu.h"             // MENU_FONT and LABEL_SIZE, for the debug camera label
 #include "splashkit.h"
 #include <cmath> // floor
 
