@@ -59,7 +59,7 @@ color block_colour(BlockType type)
     case LEAVES:
         return rgb_color(40, 110, 30);
     case WATER:
-        return rgb_color(50, 90, 200);
+        return rgba_color(50, 90, 200, 200);
     case SAND:
         return rgb_color(219, 207, 163);
     case AIR:

@@ -10,6 +10,9 @@ void draw_grid(const Camera &cam, int grid_radius);
 // every active block as shaded solid faces (painter's algorithm)
 void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const World &world, bool see_through, FrameTimer &timer);
 
+// blue tint over the whole screen while the camera is underwater
+void draw_underwater_tint(const Camera &cam, const World &world);
+
 // frame rate measurement, kept in main because it has to remember
 // things between frames
 struct FpsCounter

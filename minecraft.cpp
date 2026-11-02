@@ -120,6 +120,9 @@ int main()
         draw_grid(view_cam, 20);
         draw_world_solid(view_cam, cam, world, see_through, frame_timer);
 
+        // after the world so it covers all of it, before the crosshair and hud
+        draw_underwater_tint(view_cam, world);
+
         // crosshair
         fill_circle(COLOR_WHITE, screen_width() / 2.0, screen_height() / 2.0, 2);
 

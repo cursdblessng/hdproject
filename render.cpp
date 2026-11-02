@@ -615,9 +615,10 @@ bool is_face_visible(const Camera &cam, const CubeCorners &c, int face)
 
 /**
  * hidden face culling
- * a face is hidden if its in between two blocks
- * this is decided if the cell it points into holds a block
- * because that block covers the face so it will be unrendered
+ * a face is hidden if the cell it points into covers it:
+ * a solid block always covers it
+ * the same type also covers it, so there are no faces between water blocks
+ * water doesnt cover other blocks since it's see through, so the sea floor still shows
  */
 bool is_face_hidden(const World &world, int x, int y, int z, int face)
 {
@@ -628,7 +629,9 @@ bool is_face_hidden(const World &world, int x, int y, int z, int face)
     int neighbour_y = y + (int)normal.y;
     int neighbour_z = z + (int)normal.z;
 
-    return get_block(world, neighbour_x, neighbour_y, neighbour_z) != AIR;
+    BlockType neighbour = get_block(world, neighbour_x, neighbour_y, neighbour_z);
+
+    return is_solid(neighbour) || neighbour == get_block(world, x, y, z);
 }
 
 /**
@@ -671,8 +674,10 @@ void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const
         {
             for (int z = centre_z - RENDER_DISTANCE; z <= centre_z + RENDER_DISTANCE; z++)
             {
+                BlockType type = get_block(world, x, y, z);
+
                 // empty cell, nothing to draw
-                if (get_block(world, x, y, z) == AIR)
+                if (type == AIR)
                 {
                     continue;
                 }
@@ -684,6 +689,10 @@ void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const
                     continue;
                 }
 
+                // you can be inside water and see through it, so its surface has to show
+                // from below too. back face culling would throw it away when you're underwater
+                bool is_double_sided = type == WATER;
+
                 CubeCorners c = get_block_corners(x, y, z);
 
                 for (int f = 0; f < NUM_FACES; f++)
@@ -694,7 +703,7 @@ void collect_visible_faces(const Camera &view_cam, const Camera &cull_cam, const
                         continue;
                     }
 
-                    if (is_face_visible(cull_cam, c, f))
+                    if (is_double_sided || is_face_visible(cull_cam, c, f))
                     {
                         // list full, so stop adding
                         if (faces.size >= MAX_VISIBLE_FACES)
@@ -882,6 +891,26 @@ void draw_world_solid(const Camera &view_cam, const Camera &cull_cam, const Worl
         // nothing changes the world between collecting and drawing
         draw_face(view_cam, cull_cam, f.x, f.y, f.z, get_block(world, f.x, f.y, f.z), f.face, see_through, timer);
     }
+}
+
+/**
+ * tints the whole screen blue when the camera's eye is inside water
+ * drawn after the world so it covers everything, but before the hud so that stays clear
+ * the cell the eye is in is found the same way as everywhere else, floor of the position
+ */
+void draw_underwater_tint(const Camera &cam, const World &world)
+{
+    int eye_x = (int)floor(cam.position.x);
+    int eye_y = (int)floor(cam.position.y);
+    int eye_z = (int)floor(cam.position.z);
+
+    if (get_block(world, eye_x, eye_y, eye_z) != WATER)
+    {
+        return;
+    }
+
+    // low alpha so you can still see through it, just shifted towards blue
+    fill_rectangle(rgba_color(30, 60, 160, 90), 0, 0, screen_width(), screen_height());
 }
 
 // HUD BELOW
