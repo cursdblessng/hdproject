@@ -63,6 +63,30 @@ struct World
     Chunk chunks[WORLD_CHUNKS][WORLD_CHUNKS];
 };
 
+// what a world is built from, same settings build same world
+struct WorldSettings
+{
+    string name;
+    unsigned int seed; // not used by superflat
+    bool is_superflat;
+};
+
+// how many worlds can be kept at once
+const int NUM_SAVE_SLOTS = 3;
+
+// one save slot on the world select screen
+struct SaveSlot
+{
+    bool is_used;
+    WorldSettings settings;
+};
+
+// every save slot wrapped in a struct so it can be passed by ref
+struct SaveSlots
+{
+    SaveSlot slots[NUM_SAVE_SLOTS];
+};
+
 // the grid is at y = 0, treat it as solid ground: you stand on it and
 // can place blocks on it. used by collision (input.cpp) and the raycast (world.cpp)
 const double WORLD_FLOOR_Y = 0.0;
@@ -141,6 +165,9 @@ void build_superflat(World &world, int size);
 // fills the whole world with perlin noise hills from a seed:
 // stone, then dirt, then grass on top. same seed = same world
 void build_terrain(World &world, unsigned int seed);
+
+// empties the world and builds it from its settings
+void build_world(World &world, const WorldSettings &settings);
 
 // camera position for the player to start at: on dry land, as close to the middle as possible
 Vector3 find_spawn(const World &world);

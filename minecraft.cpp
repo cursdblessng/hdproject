@@ -13,18 +13,19 @@ int main()
     // not stored on the 1mb stack
     static World world;
 
-    // which world to make. constants for now, later the menu will choose
-    // the type and the seed, and saving will store them
-    const bool USE_SUPERFLAT = false;
-    const int SUPERFLAT_SIZE = 100;
-    const unsigned int WORLD_SEED = 10;
+    // the worlds you can pick on the world select screen, all empty to start
+    SaveSlots save_slots;
+    for (int i = 0; i < NUM_SAVE_SLOTS; i++)
+    {
+        save_slots.slots[i].is_used = false;
+    }
 
-    // opens on the main menu, the world is built when play is clicked
+    // opens on the main menu, the world is built when a slot is picked
     GameScreen screen = SCREEN_MAIN_MENU;
 
     Camera cam;
 
-    cam.position = {0.0, 0.0, 0.0}; // moved to the spawn when play is clicked
+    cam.position = {0.0, 0.0, 0.0}; // moved to the spawn when a slot is picked
     cam.yaw = 0.0;
     cam.pitch = 0.0;
     cam.fov = 2.0;
@@ -96,20 +97,44 @@ int main()
 
             if (choice == MENU_PLAY)
             {
+                screen = SCREEN_WORLD_SELECT;
+            }
+            else if (choice == MENU_EXIT)
+            {
+                break;
+            }
+            // MENU_SETTINGS does nothing yet
+
+            // skip the game part of the loop, nothing in the world runs on the menu
+            continue;
+        }
+
+        if (screen == SCREEN_WORLD_SELECT)
+        {
+            WorldSelectMenu select_menu = make_world_select_menu(save_slots);
+            draw_world_select_menu(select_menu);
+            refresh_screen(TARGET_FPS);
+
+            WorldSelectChoice select_choice = world_select_choice(select_menu);
+
+            if (select_choice.action == SELECT_SLOT)
+            {
+                int slot = select_choice.slot;
+
+                // TEMPORARY: an empty slot gets a default world, a random seed so each slot is different.
+                // the create world screen will replace this
+                if (!save_slots.slots[slot].is_used)
+                {
+                    save_slots.slots[slot].settings.name = "World " + std::to_string(slot + 1);
+                    save_slots.slots[slot].settings.seed = rnd(1000000);
+                    save_slots.slots[slot].settings.is_superflat = false;
+                    save_slots.slots[slot].is_used = true;
+                }
+
                 // building takes a moment, so show something instead of a frozen menu
                 draw_loading_screen();
 
-                // the last world is still in memory if you quit to title, empty it first
-                clear_world(world);
-
-                if (USE_SUPERFLAT)
-                {
-                    build_superflat(world, SUPERFLAT_SIZE);
-                }
-                else
-                {
-                    build_terrain(world, WORLD_SEED);
-                }
+                build_world(world, save_slots.slots[slot].settings);
 
                 // start fresh, nothing carried over from the last world
                 cam.position = find_spawn(world);
@@ -128,13 +153,12 @@ int main()
 
                 screen = SCREEN_PLAYING;
             }
-            else if (choice == MENU_EXIT)
+            else if (select_choice.action == SELECT_BACK)
             {
-                break;
+                screen = SCREEN_MAIN_MENU;
             }
-            // MENU_SETTINGS does nothing yet
 
-            // skip the game part of the loop, nothing in the world runs on the menu
+            // same as the main menu, nothing in the world runs here
             continue;
         }
 

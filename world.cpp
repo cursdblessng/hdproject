@@ -579,6 +579,26 @@ void build_terrain(World &world, unsigned int seed)
     add_trees(world, seed);
 }
 
+// the superflat is this many blocks across
+const int SUPERFLAT_SIZE = 100;
+
+/**
+ * empties world then builds it based on settings provided
+ */
+void build_world(World &world, const WorldSettings &settings)
+{
+    clear_world(world);
+
+    if (settings.is_superflat)
+    {
+        build_superflat(world, SUPERFLAT_SIZE);
+    }
+    else
+    {
+        build_terrain(world, settings.seed);
+    }
+}
+
 int surface_y(const World &world, int x, int z)
 {
     for (int y = WORLD_HEIGHT - 1; y >= 0; y--)

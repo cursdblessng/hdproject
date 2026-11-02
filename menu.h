@@ -2,11 +2,13 @@
 #pragma once
 
 #include "splashkit.h"
+#include "world.h"
 
 // which screen main is showing, decides what each frame does
 enum GameScreen
 {
     SCREEN_MAIN_MENU,
+    SCREEN_WORLD_SELECT,
     SCREEN_PLAYING
 };
 
@@ -34,7 +36,7 @@ struct MainMenu
     Button exit;
 };
 
-// what was clicked on the pause menu this frame, PAUSE_MENU if nothing
+// what was clicked on the pause menu this frame, PAUSE_NONE if nothing
 enum PauseChoice
 {
     PAUSE_NONE,
@@ -72,3 +74,34 @@ void draw_main_menu(const MainMenu &menu);
 
 // shown while the world builds, so the game doesn't look frozen
 void draw_loading_screen();
+
+// what was clicked on world select screen
+enum WorldSelectAction
+{
+    SELECT_NONE,
+    SELECT_SLOT,
+    SELECT_BACK
+};
+
+// the action, plus which slot it was for SELECT_SLOT
+struct WorldSelectChoice
+{
+    WorldSelectAction action;
+    int slot;
+};
+
+// one button per save slot
+struct WorldSelectMenu
+{
+    Button slots[NUM_SAVE_SLOTS];
+    Button back;
+};
+
+// buttons laid out for the current window size, labelled from the slots
+WorldSelectMenu make_world_select_menu(const SaveSlots &save_slots);
+
+// which button was clicked this frame
+WorldSelectChoice world_select_choice(const WorldSelectMenu &menu);
+
+// title and buttons over the whole screen
+void draw_world_select_menu(const WorldSelectMenu &menu);

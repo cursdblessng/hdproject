@@ -64,6 +64,33 @@ PauseMenu make_pause_menu()
     return menu;
 }
 
+/**
+ * used slot shows world name, empty slot says empty
+ */
+WorldSelectMenu make_world_select_menu(const SaveSlots &save_slots)
+{
+    double centre_x = screen_width() / 2.0;
+    double spacing = BUTTON_HEIGHT + BUTTON_GAP;
+    double first_y = screen_height() / 2.0 - spacing;
+
+    WorldSelectMenu menu;
+
+    for (int i = 0; i < NUM_SAVE_SLOTS; i++)
+    {
+        string label = "Empty Slot";
+        if (save_slots.slots[i].is_used)
+        {
+            label = save_slots.slots[i].settings.name;
+        }
+
+        menu.slots[i] = make_button(label, centre_x, first_y + i * spacing);
+    }
+
+    // under the last slot
+    menu.back = make_button("Back", centre_x, first_y + NUM_SAVE_SLOTS * spacing);
+    return menu;
+}
+
 bool is_mouse_over(const Button &button)
 {
     return point_in_rectangle(mouse_position(), button.area);
@@ -103,6 +130,29 @@ PauseChoice pause_menu_choice(const PauseMenu &menu)
         return PAUSE_QUIT_TO_TITLE;
     }
     return PAUSE_NONE;
+}
+
+WorldSelectChoice world_select_choice(const WorldSelectMenu &menu)
+{
+    WorldSelectChoice choice;
+    choice.action = SELECT_NONE;
+    choice.slot = -1;
+
+    for (int i = 0; i < NUM_SAVE_SLOTS; i++)
+    {
+        if (button_clicked(menu.slots[i]))
+        {
+            choice.action = SELECT_SLOT;
+            choice.slot = i;
+        }
+    }
+
+    if (button_clicked(menu.back))
+    {
+        choice.action = SELECT_BACK;
+    }
+
+    return choice;
 }
 
 /**
@@ -157,6 +207,19 @@ void draw_pause_menu(const PauseMenu &menu)
 
     draw_button(menu.resume);
     draw_button(menu.quit_to_title);
+}
+
+void draw_world_select_menu(const WorldSelectMenu &menu)
+{
+    clear_screen(COLOR_SKY_BLUE);
+
+    draw_centred_text("Select World", COLOR_WHITE, TITLE_SIZE, screen_width() / 2.0, screen_height() / 4.0);
+
+    for (int i = 0; i < NUM_SAVE_SLOTS; i++)
+    {
+        draw_button(menu.slots[i]);
+    }
+    draw_button(menu.back);
 }
 
 /**
