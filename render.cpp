@@ -852,7 +852,7 @@ void draw_face(const Camera &view_cam, const Camera &cull_cam, int x, int y, int
             continue;
         }
 
-        draw_3d_line(view_cam, start, end, outline);
+        // draw_3d_line(view_cam, start, end, outline);
     }
 
     add_stage_time(timer, STAGE_OUTLINE, outline_start);

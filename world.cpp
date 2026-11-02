@@ -34,6 +34,14 @@ const double CLIFF_SLOPE = 2.5;        // slopes this steep or more are bare sto
 const int NOISE_LAYER_PLAINS = 0;
 const int NOISE_LAYER_REGIONS = 1;
 const int NOISE_LAYER_MOUNTAINS = 2;
+const int NOISE_LAYER_CONTINENTS = 3;
+
+// oceans
+const double CONTINENT_SCALE = 192.0; // roughly how wide oceans and landmasses are
+const double CONTINENT_HEIGHT = 30.0; // how far land rises and ocean floor sinks from the base height
+const double COAST_FADE = 4.0;        // higher = mountains start closer to the coast
+const int SEA_LEVEL = 40;             // y of the top water block
+const int BEACH_HEIGHT = 1;           // land up to this many blocks above sea level is sand
 
 // picks display color for blocks
 color block_colour(BlockType type)
@@ -52,10 +60,17 @@ color block_colour(BlockType type)
         return rgb_color(40, 110, 30);
     case WATER:
         return rgb_color(50, 90, 200);
+    case SAND:
+        return rgb_color(219, 207, 163);
     case AIR:
         break; // air not drawn so use fallback
     }
     return COLOR_WHITE; // fallback
+}
+
+bool is_solid(BlockType type)
+{
+    return type != AIR && type != WATER;
 }
 
 /**
@@ -169,7 +184,7 @@ void build_superflat(World &world, int size)
  */
 float noise_2d(double x, double z, double frequency, unsigned int seed, int layer)
 {
-    int slice = ((int)((seed >> 8) & 255) + layer * 85) & 255;
+    int slice = ((int)((seed >> 8) & 255) + layer * 64) & 255;
 
     return stb_perlin_noise3_seed((float)(x * frequency), (float)slice + 0.5f, (float)(z * frequency),
                                   0, 0, 0, (int)(seed & 255));
@@ -214,11 +229,11 @@ double clamp_01(double value)
     return value;
 }
 
-/**
- * how high the ground is at a column x,z before rounding to a whole block
- * plains everywhere, with mountains added on top in mountainous regions
- * exact heights change smoothly so the slope check uses these
- */
+double smooth_01(double value)
+{
+    return value * value * (3.0 - 2.0 * value);
+}
+
 double terrain_height_exact(int x, int z, unsigned int seed)
 {
     double plains = fractal_noise(x, z, PLAINS_SCALE, seed, NOISE_LAYER_PLAINS);
@@ -231,7 +246,7 @@ double terrain_height_exact(int x, int z, unsigned int seed)
      */
     double region = noise_2d(x, z, 1.0 / REGION_SCALE, seed, NOISE_LAYER_REGIONS);
     double mountain_amount = clamp_01(region * 2.0 + 0.3);
-    mountain_amount = mountain_amount * mountain_amount * (3.0 - 2.0 * mountain_amount);
+    mountain_amount = smooth_01(mountain_amount);
 
     /**
      * ridges: noise crosses 0 along wiggly lines. |noise| is 0 there with a sharp V shape,
@@ -241,7 +256,16 @@ double terrain_height_exact(int x, int z, unsigned int seed)
     double ridge = 1.0 - fabs(fractal_noise(x, z, MOUNTAIN_SCALE, seed, NOISE_LAYER_MOUNTAINS));
     ridge = pow(ridge, MOUNTAIN_SHARPNESS);
 
-    return TERRAIN_BASE_HEIGHT + plains * PLAINS_HEIGHT + mountain_amount * ridge * MOUNTAIN_HEIGHT;
+    /**
+     * continents: positive = land, negative = ocean
+     * added straight onto the height, so about half the world sinks below sea level
+     * land_amount is 0 at the coast and reaches 1 a little way inland,
+     * multiplying the mountains by it stops them rising straight out of the sea
+     */
+    double continent = fractal_noise(x, z, CONTINENT_SCALE, seed, NOISE_LAYER_CONTINENTS);
+    double land_amount = smooth_01(clamp_01(continent * COAST_FADE));
+
+    return TERRAIN_BASE_HEIGHT + plains * PLAINS_HEIGHT + land_amount * mountain_amount * ridge * MOUNTAIN_HEIGHT + continent * CONTINENT_HEIGHT;
 }
 
 /**
@@ -289,6 +313,9 @@ void build_terrain(World &world, unsigned int seed)
             // steep enough that grass and dirt couldnt stay on it
             bool is_cliff = terrain_slope(x, z, seed) >= CLIFF_SLOPE;
 
+            // beaches are just above the water ocean is below
+            bool is_sandy = surface <= SEA_LEVEL + BEACH_HEIGHT;
+
             for (int y = 0; y <= surface; y++)
             {
                 BlockType type;
@@ -296,6 +323,10 @@ void build_terrain(World &world, unsigned int seed)
                 {
                     // whole column, so the cliff face shows no dirt layers either
                     type = STONE;
+                }
+                else if (is_sandy && y >= surface - DIRT_DEPTH)
+                {
+                    type = SAND;
                 }
                 else if (y == surface)
                 {
@@ -312,6 +343,11 @@ void build_terrain(World &world, unsigned int seed)
 
                 set_block(world, x, y, z, type);
             }
+
+            for (int y = surface + 1; y <= SEA_LEVEL; y++)
+            {
+                set_block(world, x, y, z, WATER);
+            }
         }
     }
 }
@@ -327,6 +363,48 @@ int surface_y(const World &world, int x, int z)
     }
 
     return 0;
+}
+
+/**
+ * is top of column able to be stood on
+ * the top block is the one just under surface_y
+ */
+bool is_dry_land(const World &world, int x, int z)
+{
+    int top = surface_y(world, x, z) - 1;
+    return top >= 0 && get_block(world, x, top, z) != WATER;
+}
+
+/**
+ * where the player starts: the dry land closest to the middle of the world
+ * checks the edge of a square around the centre, making the square 1 bigger each time,
+ * so nearer columns are always checked first
+ * the inside of each square was already checked by the smaller squares, so it's skipped
+ * eyes are 1.5 above the feet, + 0.5 more drops you onto the ground
+ */
+Vector3 find_spawn(const World &world)
+{
+    int centre = WORLD_SIZE / 2;
+
+    for (int radius = 0; radius < WORLD_SIZE / 2; radius++)
+    {
+        for (int x = centre - radius; x <= centre + radius; x++)
+        {
+            for (int z = centre - radius; z <= centre + radius; z++)
+            {
+                bool on_edge = x == centre - radius || x == centre + radius ||
+                               z == centre - radius || z == centre + radius;
+
+                if (on_edge && is_dry_land(world, x, z))
+                {
+                    return {x + 0.5, surface_y(world, x, z) + 2.0, z + 0.5};
+                }
+            }
+        }
+    }
+
+    // no dry land anywhere: centre of the world, on whatever is there
+    return {centre + 0.5, surface_y(world, centre, centre) + 2.0, centre + 0.5};
 }
 
 /**
@@ -373,8 +451,8 @@ bool box_hits_world(const Box &box, const World &world)
         {
             for (int z = min_z; z <= max_z; z++)
             {
-                // if its not air then its solid
-                if (get_block(world, x, y, z) != AIR)
+                // if its not air or water then its solid
+                if (is_solid(get_block(world, x, y, z)))
                 {
                     return true;
                 }
@@ -534,7 +612,7 @@ RayHit raycast_block(const Camera &cam, const World &world)
         }
 
         // one lookup for the cell the ray just entered
-        if (get_block(world, ax.cell, ay.cell, az.cell) != AIR)
+        if (is_solid(get_block(world, ax.cell, ay.cell, az.cell)))
         {
             result.hit_block = true;
             result.block_x = ax.cell;

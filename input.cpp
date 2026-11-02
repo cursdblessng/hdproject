@@ -290,6 +290,10 @@ void handle_block_select(BlockType &selected_block)
     {
         selected_block = WATER;
     }
+    if (key_typed(NUM_7_KEY))
+    {
+        selected_block = SAND;
+    }
 }
 
 /**

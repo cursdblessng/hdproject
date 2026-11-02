@@ -30,6 +30,7 @@ enum BlockType:uint8_t
     WOOD,
     LEAVES,
     WATER,
+    SAND,
 };
 
 struct Camera
@@ -124,6 +125,9 @@ BlockType get_block(const World &world, int x, int y, int z);
 // sets a block type at given coordinates
 void set_block(World &world, int x, int y, int z, BlockType type);
 
+// can this block be stood on, collided with and hit by the crosshair (air and water can't)
+bool is_solid(BlockType type);
+
 // works out the 8 corner positions of a block
 CubeCorners get_block_corners(int x, int y, int z);
 
@@ -135,8 +139,8 @@ void build_superflat(World &world, int size);
 // stone, then dirt, then grass on top. same seed = same world
 void build_terrain(World &world, unsigned int seed);
 
-// first empty cell above the highest block in a column, used for spawning
-int surface_y(const World &world, int x, int z);
+// camera position for the player to start at: on dry land, as close to the middle as possible
+Vector3 find_spawn(const World &world);
 
 // do two boxes overlap
 bool boxes_overlap(const Box &a, const Box &b);

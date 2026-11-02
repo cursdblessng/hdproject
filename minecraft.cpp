@@ -28,8 +28,7 @@ int main()
 
     Camera cam;
 
-    int spawn_ground = surface_y(world, 256, 256);
-    cam.position = {256.5, spawn_ground + 2.0, 256.5};
+    cam.position = find_spawn(world);
     cam.yaw = 0.0;
     cam.pitch = 0.0;
     cam.fov = 2.0;
